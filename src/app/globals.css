@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   FXNod design tokens. Lifted from the home UI prototype.
+   Switch theme by toggling `data-theme="dark"` on <html>.
+   ============================================================================ */
+:root {
+  --bg: #f4f3ef;
+  --surface: #ffffff;
+  --surface-2: #fbfaf6;
+  --ink: #0a1430;
+  --ink-2: #3a435c;
+  --ink-3: #7b8298;
+  --line: #e7e4dc;
+  --line-2: #eeebe3;
+  --navy: #0a1535;
+  --navy-2: #091230;
+  --navy-3: #13204a;
+  --gold: #c9a24e;
+  --gold-2: #d9b663;
+  --gold-3: #a98639;
+  --gold-soft: #f4ead0;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 1px 2px rgba(10, 20, 48, 0.05),
+    0 8px 30px -16px rgba(10, 20, 48, 0.18);
+  --shadow-nav: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 4px 24px rgba(0, 0, 0, 0.18);
+  --wm-opacity: 0.28;
+}
+
+[data-theme="dark"] {
+  --bg: #070d20;
+  --surface: #0d1633;
+  --surface-2: #0a112a;
+  --ink: #f4eedb;
+  --ink-2: #bcc1d4;
+  --ink-3: #6e7691;
+  --line: #1a2447;
+  --line-2: #15203e;
+  --navy: #040917;
+  --navy-2: #040917;
+  --navy-3: #0d1838;
+  --gold-soft: #3a2f10;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 40px -16px rgba(0, 0, 0, 0.6);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-manrope), ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-feature-settings: "tnum", "zero";
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Number flash animations for live ticking — used by TotalValueCard. */
+.flash-up {
+  animation: flashUp 0.8s ease;
+}
+.flash-dn {
+  animation: flashDn 0.8s ease;
+}
+@keyframes flashUp {
+  0% {
+    color: #7fd391;
+    text-shadow: 0 0 18px rgba(127, 211, 145, 0.6);
+  }
+  100% {
+  }
+}
+@keyframes flashDn {
+  0% {
+    color: #f08a8a;
+    text-shadow: 0 0 18px rgba(240, 138, 138, 0.5);
+  }
+  100% {
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin svg {
+  animation: spin 0.6s ease;
+}
+
+/* ============================================================================
+   Options trading scope — visually distinct from the navy/gold home theme.
+   Vela-inspired: warm stone canvas, oklch rise/fall, Inter Tight.
+
+   Activate by setting `data-app="options"` on the route's outer wrapper.
+   Tokens here OVERRIDE the home defaults inside that scope only.
+   ============================================================================ */
+[data-app="options"] {
+  --opt-bg: #fafaf9;
+  --opt-bg-elev: #ffffff;
+  --opt-bg-sunk: #f5f5f4;
+  --opt-line: #ececea;
+  --opt-line-strong: #d6d5d1;
+  --opt-ink: #15161a;
+  --opt-ink-2: #4a4d55;
+  --opt-ink-3: #8a8d94;
+  --opt-ink-4: #b8babf;
+  --opt-rise: oklch(0.66 0.16 152);
+  --opt-rise-soft: oklch(0.66 0.16 152 / 0.1);
+  --opt-fall: oklch(0.62 0.2 25);
+  --opt-fall-soft: oklch(0.62 0.2 25 / 0.1);
+  --opt-radius: 10px;
+  --opt-radius-sm: 7px;
+
+  background: var(--opt-bg);
+  color: var(--opt-ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+[data-app="options"][data-opt-theme="dark"] {
+  --opt-bg: #0c0d10;
+  --opt-bg-elev: #14161b;
+  --opt-bg-sunk: #0a0b0e;
+  --opt-line: #21242b;
+  --opt-line-strong: #2e323b;
+  --opt-ink: #f4f5f7;
+  --opt-ink-2: #b8bcc4;
+  --opt-ink-3: #777b85;
+  --opt-ink-4: #4a4d55;
+}
