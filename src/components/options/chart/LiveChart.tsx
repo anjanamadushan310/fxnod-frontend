@@ -1,0 +1,329 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import {
+  AreaSeries,
+  CandlestickSeries,
+  ColorType,
+  CrosshairMode,
+  createChart,
+  type AreaData,
+  type CandlestickData,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from "lightweight-charts";
+import {
+  useDerivChartFeed,
+  type FeedCandle,
+  type FeedStatus,
+  type FeedTick,
+} from "@/hooks/useDerivChartFeed";
+import { feedPlan, toDerivSymbol } from "@/services/deriv/derivSymbols";
+import type { ChartTypeId, IntervalId } from "./chartSettings";
+
+interface LiveChartProps {
+  /** Catalog id (e.g. "vol_100_1s") — mapped to a Deriv symbol internally. */
+  symbol: string;
+  chartType: ChartTypeId;
+  interval: IntervalId;
+  /** Lifts the latest streamed price so MarketPill can show it live. */
+  onPrice?: (price: number) => void;
+}
+
+/**
+ * Real-time chart backed by lightweight-charts + the Deriv WebSocket feed.
+ *
+ * The canvas chart, its series, and the data buffers all live in refs so the
+ * tick stream bypasses React's render path entirely — only the connection
+ * status (a rare event) is React state. The series type follows `chartType`
+ * (area vs candlestick); the wire format follows `interval` (raw ticks vs
+ * candles). Switching either is a soft URL change upstream, so this component
+ * just reacts to new props.
+ */
+export function LiveChart({
+  symbol,
+  chartType,
+  interval,
+  onPrice,
+}: LiveChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<
+    ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null
+  >(null);
+
+  // Data buffers — replaced on seed, mutated tail-only on update.
+  const ticksRef = useRef<FeedTick[]>([]);
+  const candlesRef = useRef<FeedCandle[]>([]);
+
+  const [status, setStatus] = useState<FeedStatus>("idle");
+
+  const derivSymbol = toDerivSymbol(symbol);
+  const plan = feedPlan(chartType, interval);
+  const seriesKind = plan.seriesKind;
+
+  // ── Chart instance: created once, resized via ResizeObserver ──────────────
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const css = (name: string) =>
+      getComputedStyle(el).getPropertyValue(name).trim();
+    const ink = css("--opt-ink") || "#0a1430";
+    const line = css("--opt-line") || "#e7e4dc";
+    const inkFaint = css("--opt-ink-3") || "#7b8298";
+
+    const chart = createChart(el, {
+      width: el.clientWidth,
+      height: el.clientHeight,
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: inkFaint,
+        attributionLogo: false,
+      },
+      grid: {
+        vertLines: { color: line, style: 1 },
+        horzLines: { color: line, style: 1 },
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: line },
+      timeScale: { borderColor: line, timeVisible: true, secondsVisible: false },
+      handleScale: true,
+      handleScroll: true,
+    });
+    chartRef.current = chart;
+    void ink; // resolved per-series below
+
+    // Keep the canvas matched to its flex container (mandated ResizeObserver).
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0]!.contentRect;
+      chart.applyOptions({ width, height });
+    });
+    ro.observe(el);
+
+    return () => {
+      ro.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
+
+  // ── Series: (re)created when the kind changes; rehydrated from buffers ────
+  useEffect(() => {
+    const chart = chartRef.current;
+    const el = containerRef.current;
+    if (!chart || !el) return;
+
+    const css = (name: string) =>
+      getComputedStyle(el).getPropertyValue(name).trim();
+    const ink = css("--opt-ink") || "#0a1430";
+    const rise = css("--opt-rise") || "#1eaf7b";
+    const fall = css("--opt-fall") || "#e0533d";
+
+    if (seriesRef.current) {
+      chart.removeSeries(seriesRef.current);
+      seriesRef.current = null;
+    }
+
+    if (seriesKind === "candlestick") {
+      seriesRef.current = chart.addSeries(CandlestickSeries, {
+        upColor: rise,
+        downColor: fall,
+        borderUpColor: rise,
+        borderDownColor: fall,
+        wickUpColor: rise,
+        wickDownColor: fall,
+      });
+    } else {
+      seriesRef.current = chart.addSeries(AreaSeries, {
+        lineColor: ink,
+        topColor: hexToRgba(ink, 0.18),
+        bottomColor: hexToRgba(ink, 0),
+        lineWidth: 2,
+      });
+    }
+
+    hydrateSeries(seriesRef.current, seriesKind, ticksRef.current, candlesRef.current);
+    chart.timeScale().fitContent();
+  }, [seriesKind]);
+
+  // ── Live feed — pushes straight into the series via refs ──────────────────
+  useDerivChartFeed({
+    derivSymbol,
+    style: plan.style,
+    granularity: plan.granularity,
+    enabled: Boolean(derivSymbol),
+    onStatus: setStatus,
+    onSeedTicks: (ticks) => {
+      ticksRef.current = ticks;
+      if (seriesKind === "area") {
+        (seriesRef.current as ISeriesApi<"Area"> | null)?.setData(
+          toAreaData(ticks),
+        );
+        chartRef.current?.timeScale().fitContent();
+      }
+      const last = ticks[ticks.length - 1];
+      if (last) onPrice?.(last.value);
+    },
+    onTick: (tick) => {
+      pushTick(ticksRef.current, tick);
+      if (seriesKind === "area") {
+        try {
+          (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
+            time: tick.time as UTCTimestamp,
+            value: tick.value,
+          });
+        } catch {
+          /* out-of-order tick — ignore */
+        }
+      }
+      onPrice?.(tick.value);
+    },
+    onSeedCandles: (candles) => {
+      candlesRef.current = candles;
+      ticksRef.current = candles.map((c) => ({ time: c.time, value: c.close }));
+      hydrateSeries(seriesRef.current, seriesKind, ticksRef.current, candles);
+      chartRef.current?.timeScale().fitContent();
+      const last = candles[candles.length - 1];
+      if (last) onPrice?.(last.close);
+    },
+    onCandle: (candle) => {
+      upsertCandle(candlesRef.current, candle);
+      try {
+        if (seriesKind === "candlestick") {
+          (seriesRef.current as ISeriesApi<"Candlestick"> | null)?.update(
+            toCandleDatum(candle),
+          );
+        } else {
+          (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
+            time: candle.time as UTCTimestamp,
+            value: candle.close,
+          });
+        }
+      } catch {
+        /* out-of-order candle — ignore */
+      }
+      onPrice?.(candle.close);
+    },
+  });
+
+  return (
+    <div className="relative h-full w-full min-h-0">
+      <div ref={containerRef} className="absolute inset-0" />
+      <FeedStatusBadge status={status} unsupported={!derivSymbol} />
+    </div>
+  );
+}
+
+// ─── status overlay ──────────────────────────────────────────────────────────
+
+function FeedStatusBadge({
+  status,
+  unsupported,
+}: {
+  status: FeedStatus;
+  unsupported: boolean;
+}) {
+  if (unsupported) {
+    return (
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-opt-bg-sunk px-3 py-1.5 text-[12px] text-opt-ink-3">
+        This market isn’t available on the live feed yet.
+      </div>
+    );
+  }
+  if (status === "open" || status === "idle") return null;
+  const label =
+    status === "connecting"
+      ? "Connecting to live feed…"
+      : status === "closed"
+        ? "Reconnecting…"
+        : "Live feed error";
+  return (
+    <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-opt-bg-sunk px-2.5 py-1 text-[11px] font-medium text-opt-ink-3">
+      {label}
+    </div>
+  );
+}
+
+// ─── data helpers ────────────────────────────────────────────────────────────
+
+const MAX_POINTS = 1500;
+
+/** Drop non-ascending points; collapse equal timestamps to the latest. */
+function ascending<T extends { time: number }>(arr: T[]): T[] {
+  const out: T[] = [];
+  for (const it of arr) {
+    const last = out[out.length - 1];
+    if (last && it.time < last.time) continue;
+    if (last && it.time === last.time) {
+      out[out.length - 1] = it;
+      continue;
+    }
+    out.push(it);
+  }
+  return out;
+}
+
+function toAreaData(ticks: FeedTick[]): AreaData[] {
+  return ascending(ticks).map((t) => ({
+    time: t.time as UTCTimestamp,
+    value: t.value,
+  }));
+}
+
+function toCandleData(candles: FeedCandle[]): CandlestickData[] {
+  return ascending(candles).map(toCandleDatum);
+}
+
+function toCandleDatum(c: FeedCandle): CandlestickData {
+  return {
+    time: c.time as UTCTimestamp,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+  };
+}
+
+function hydrateSeries(
+  series: ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null,
+  kind: "area" | "candlestick",
+  ticks: FeedTick[],
+  candles: FeedCandle[],
+) {
+  if (!series) return;
+  if (kind === "candlestick") {
+    (series as ISeriesApi<"Candlestick">).setData(toCandleData(candles));
+  } else {
+    (series as ISeriesApi<"Area">).setData(toAreaData(ticks));
+  }
+}
+
+/** Append a tick, replacing the tail if the second repeats; cap the buffer. */
+function pushTick(buf: FeedTick[], tick: FeedTick) {
+  const last = buf[buf.length - 1];
+  if (last && tick.time === last.time) buf[buf.length - 1] = tick;
+  else if (!last || tick.time > last.time) buf.push(tick);
+  if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
+}
+
+/** Update the forming candle in place, or append a new bucket. */
+function upsertCandle(buf: FeedCandle[], candle: FeedCandle) {
+  const last = buf[buf.length - 1];
+  if (last && candle.time === last.time) buf[buf.length - 1] = candle;
+  else if (!last || candle.time > last.time) buf.push(candle);
+  if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
+}
+
+/** "#rrggbb" → "rgba(r,g,b,a)". Falls back to the input for non-hex. */
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1]!, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}

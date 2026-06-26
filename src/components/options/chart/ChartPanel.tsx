@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChartSettings } from "@/hooks/useChartSettings";
-import { usePriceSeries } from "@/hooks/usePriceSeries";
 import { MarketPicker } from "../market/MarketPicker";
-import { ChartCanvas, topPercentForPrice } from "./ChartCanvas";
 import { ChartFooter } from "./ChartFooter";
 import { ChartTools } from "./ChartTools";
-import { ChartZoomControls } from "./ChartZoomControls";
-import { CurrentPriceTag } from "./CurrentPriceTag";
+import { LiveChart } from "./LiveChart";
 import { MarketPill } from "./MarketPill";
 import { StatsStrip } from "./StatsStrip";
 
@@ -17,10 +14,8 @@ interface ChartPanelProps {
   marketId: string;
   /** Display name e.g. "Volatility 100 (1s) Index". */
   marketName: string;
-  /** Seed price for the simulator. Real-world: comes from initial REST snapshot. */
+  /** Fallback price shown until the first live tick arrives. */
   seedPrice: number;
-  /** How fast the simulator ticks; real impl ignores this. */
-  intervalMs?: number;
   /** Render the Accumulators stats strip between chart and footer. */
   showStatsStrip?: boolean;
   /** User picked a different market in the picker. */
@@ -28,38 +23,44 @@ interface ChartPanelProps {
 }
 
 /**
- * Single owner of the `usePriceSeries` subscription.
+ * Chart column owner. Composes the market pill + picker, the tool strip, and
+ * the live lightweight-charts canvas (LiveChart, which owns the Deriv
+ * WebSocket subscription keyed by the URL's symbol/interval/chart_type).
  *
- * Distributes:
- *   - `points`  → ChartCanvas (re-paints every tick, expected)
- *   - `latest`, `change`, `pct` → MarketPill (memo-able)
- *   - `latest`, `topPct` → CurrentPriceTag (React.memo'd already)
- *
- * Also owns the MarketPicker open/close flag — the picker is a portal-style
- * popover anchored to the MarketPill. Toggling it doesn't perturb the chart
- * subscription because both live in this component's subtree.
+ * The only data this component lifts off the stream is the latest price, used
+ * to keep the MarketPill (price + session change) in sync. Tick-by-tick chart
+ * painting happens inside LiveChart via refs, off React's render path.
  */
 export function ChartPanel({
   marketId,
   marketName,
   seedPrice,
-  intervalMs = 1000,
   showStatsStrip = false,
   onSelectMarket,
 }: ChartPanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // Chart type + interval are URL-driven (`?chart_type=…&interval=…`).
   const { chartType, interval, setChartType, setInterval } = useChartSettings();
-  const { points, latest, anchor, dir } = usePriceSeries({
-    seed: seedPrice,
-    intervalMs,
-    windowSize: 120,
-  });
 
-  const change = +(latest - anchor).toFixed(2);
+  // Latest streamed price + the session anchor for the change indicator.
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const anchorRef = useRef<number | null>(null);
+
+  // Reset the price readout when the market changes — the next stream seeds it.
+  useEffect(() => {
+    setLivePrice(null);
+    anchorRef.current = null;
+  }, [marketId]);
+
+  const handlePrice = useCallback((price: number) => {
+    if (anchorRef.current === null) anchorRef.current = price;
+    setLivePrice(price);
+  }, []);
+
+  const price = livePrice ?? seedPrice;
+  const anchor = anchorRef.current ?? seedPrice;
+  const change = livePrice !== null ? +(price - anchor).toFixed(2) : 0;
   const changePct = anchor !== 0 ? (change / anchor) * 100 : 0;
-  const trend: "rise" | "fall" | null =
-    dir > 0 ? "rise" : dir < 0 ? "fall" : null;
 
   return (
     <div className="flex flex-1 flex-col min-h-0 min-w-0">
@@ -67,7 +68,7 @@ export function ChartPanel({
       <div className="relative px-4 pt-3">
         <MarketPill
           name={marketName}
-          price={latest}
+          price={price}
           change={change}
           changePct={changePct}
           onOpen={() => setPickerOpen((v) => !v)}
@@ -84,7 +85,7 @@ export function ChartPanel({
         )}
       </div>
 
-      {/* Chart body: [tools] [canvas] */}
+      {/* Chart body: [tools] [live canvas] */}
       <div className="relative grid flex-1 min-h-0 min-w-0 grid-cols-[44px_1fr] gap-0 px-3 pt-2">
         <ChartTools
           chartType={chartType}
@@ -93,18 +94,12 @@ export function ChartPanel({
           onIntervalChange={setInterval}
         />
 
-        <ChartCanvas points={points} chartType={chartType} interval={interval}>
-          <CurrentPriceTag
-            price={latest}
-            topPercent={topPercentForPrice(latest, points)}
-            trend={trend}
-          />
-        </ChartCanvas>
-
-        {/* Floating zoom cluster (absolute, bottom-left over the canvas) */}
-        <div className="absolute bottom-12 left-4">
-          <ChartZoomControls />
-        </div>
+        <LiveChart
+          symbol={marketId}
+          chartType={chartType}
+          interval={interval}
+          onPrice={handlePrice}
+        />
       </div>
 
       {showStatsStrip && <StatsStrip />}

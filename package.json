@@ -21,7 +21,9 @@
     "postcss": "^8.4.47",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.2",
-    "lucide-react": "^0.451.0"
+    "lucide-react": "^0.451.0",
+    "lightweight-charts": "^5.2.0",
+    "query-string": "^9.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
