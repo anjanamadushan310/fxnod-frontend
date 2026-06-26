@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { ChartPanel } from "@/components/options/chart/ChartPanel";
 import { IconSidebar } from "@/components/options/layout/IconSidebar";
 import { OptionsShell } from "@/components/options/layout/OptionsShell";
 import { TopBar } from "@/components/options/layout/TopBar";
 import { findMarket } from "@/components/options/market/catalog";
+import { useChartSettings } from "@/hooks/useChartSettings";
 import { OrderPanel } from "@/components/options/order/OrderPanel";
 import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer";
 import type { ContractTypeId } from "@/components/options/layout/contractTypes";
@@ -29,21 +30,32 @@ import type { OptionsAccountMode } from "@/components/options/layout/AccountSele
  * inputs) lives in the leaf that owns the subscription.
  */
 export default function OptionsPage() {
+  // ChartPanel reads `useSearchParams()` (via useChartSettings) — Next.js
+  // requires a Suspense boundary around any client subtree that does, or the
+  // production build errors out. The shell renders instantly; only the
+  // search-param read suspends on first paint.
+  return (
+    <Suspense fallback={null}>
+      <OptionsPageInner />
+    </Suspense>
+  );
+}
+
+function OptionsPageInner() {
   const [contractType, setContractType] =
     useState<ContractTypeId>("rise_fall");
   const [accountMode, _setAccountMode] = useState<OptionsAccountMode>("demo");
-  const [marketId, setMarketId] = useState<string>("vol_100_1s");
   const [positionsOpen, setPositionsOpen] = useState(false);
+
+  // Selected market is URL-driven (`?symbol=`), alongside chart_type + interval.
+  const { symbol, setSymbol } = useChartSettings();
 
   // TODO Phase F: replace with useAccountBalance() subscription.
   const accountBalance = 2503.2;
 
-  const market = findMarket(marketId);
-  if (!market) {
-    // Defensive — catalog drift after a deploy. Fall back to the default.
-    setMarketId("vol_100_1s");
-    return null;
-  }
+  // `parseSymbol` already guarantees a catalog hit, so `market` is defined —
+  // the `!` is just to satisfy the type without a redundant runtime branch.
+  const market = findMarket(symbol)!;
 
   return (
     <>
@@ -71,7 +83,7 @@ export default function OptionsPage() {
             marketName={market.name}
             seedPrice={market.seedPrice}
             showStatsStrip={contractType === "accumulators"}
-            onSelectMarket={setMarketId}
+            onSelectMarket={setSymbol}
           />
         }
         order={<OrderPanel contractType={contractType} symbol={market.id} />}

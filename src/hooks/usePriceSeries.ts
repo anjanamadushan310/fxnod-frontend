@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface PricePoint {
   /** Epoch ms */
@@ -52,24 +52,24 @@ export function usePriceSeries({
   enabled = true,
   volatility = 0.0015,
 }: Options): PriceSeries {
-  // Stable initial window so SSR / first paint match what the user expects.
-  const initial = useRef<PricePoint[]>();
-  if (initial.current === undefined) {
-    initial.current = buildInitialHistory(seed, windowSize, volatility);
-  }
+  // Deterministic first render: an empty window with the (stable) seed price.
+  // The random back-history is generated on mount in the effect below, NOT
+  // during render — `buildInitialHistory` uses Math.random()/Date.now(), so
+  // running it in render would produce different output on the server vs. the
+  // client and trip a hydration mismatch (both the SVG path data and the
+  // MarketPill price). Server + first client render now agree on this seed
+  // state; ChartCanvas shows its empty placeholder until the effect fills it.
+  const [state, setState] = useState<PriceSeries>(() => ({
+    points: [],
+    latest: seed,
+    anchor: seed,
+    dir: 0,
+    pulse: 0,
+  }));
 
-  const [state, setState] = useState<PriceSeries>(() => {
-    const points = initial.current!;
-    return {
-      points,
-      latest: points[points.length - 1]!.p,
-      anchor: points[0]!.p,
-      dir: 0,
-      pulse: 0,
-    };
-  });
-
-  // Reset whenever the seed changes (e.g. switching markets).
+  // Build the initial window on mount, and rebuild whenever the seed changes
+  // (e.g. switching markets). Effects don't run during SSR, so this is the
+  // first place randomness is allowed in.
   useEffect(() => {
     const fresh = buildInitialHistory(seed, windowSize, volatility);
     setState({

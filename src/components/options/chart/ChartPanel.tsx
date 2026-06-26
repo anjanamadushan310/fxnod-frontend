@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useChartSettings } from "@/hooks/useChartSettings";
 import { usePriceSeries } from "@/hooks/usePriceSeries";
 import { MarketPicker } from "../market/MarketPicker";
 import { ChartCanvas, topPercentForPrice } from "./ChartCanvas";
@@ -47,6 +48,8 @@ export function ChartPanel({
   onSelectMarket,
 }: ChartPanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Chart type + interval are URL-driven (`?chart_type=…&interval=…`).
+  const { chartType, interval, setChartType, setInterval } = useChartSettings();
   const { points, latest, anchor, dir } = usePriceSeries({
     seed: seedPrice,
     intervalMs,
@@ -83,9 +86,14 @@ export function ChartPanel({
 
       {/* Chart body: [tools] [canvas] */}
       <div className="relative grid flex-1 min-h-0 min-w-0 grid-cols-[44px_1fr] gap-0 px-3 pt-2">
-        <ChartTools />
+        <ChartTools
+          chartType={chartType}
+          interval={interval}
+          onChartTypeChange={setChartType}
+          onIntervalChange={setInterval}
+        />
 
-        <ChartCanvas points={points}>
+        <ChartCanvas points={points} chartType={chartType} interval={interval}>
           <CurrentPriceTag
             price={latest}
             topPercent={topPercentForPrice(latest, points)}

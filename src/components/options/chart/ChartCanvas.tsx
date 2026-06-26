@@ -2,10 +2,18 @@
 
 import { useMemo } from "react";
 import type { PricePoint } from "@/hooks/usePriceSeries";
-import { cn } from "@/lib/cn";
+import {
+  candleBucketSize,
+  type ChartTypeId,
+  type IntervalId,
+} from "./chartSettings";
 
 interface ChartCanvasProps {
   points: PricePoint[];
+  /** Which renderer to use — comes from the URL (`?chart_type=`). */
+  chartType: ChartTypeId;
+  /** Active interval — drives candle bucketing (`?interval=`). */
+  interval: IntervalId;
   /** Render a tick on the Y axis every N pixels (approx). */
   yTickPx?: number;
   /** Render a tick on the X axis every N minutes. */
@@ -15,33 +23,41 @@ interface ChartCanvasProps {
 }
 
 /**
- * Pure SVG line+area chart. No data subscription of its own — `points`
- * is provided by ChartPanel via `usePriceSeries`. The component is
- * deliberately stateless so:
+ * SVG chart renderer. No data subscription of its own — `points` is provided
+ * by ChartPanel via `usePriceSeries`, and `chartType` / `interval` come from
+ * the URL via `useChartSettings`. The render branch is chosen entirely by
+ * those URL-derived props:
  *
- *   - It can be rendered server-side from a static snapshot
- *   - Memoising it is a single React.memo away (we keep it raw here
- *     because it does re-render every tick, by design)
+ *   - "area"                  → filled line + area
+ *   - "candle" / "hollow"     → candlesticks (filled / outlined-up)
+ *   - "ohlc"                  → open/high/low/close bars
  *
- * Axes are drawn inside the same SVG using a 1:1 viewBox so the path
- * coordinates are real pixels — no math gymnastics in render.
+ * Candle modes aggregate the raw tick stream into buckets sized by the
+ * active interval (see `candleBucketSize`).
+ *
+ * Axes share a single logical viewBox so path coordinates are real pixels.
  */
 export function ChartCanvas({
   points,
+  chartType,
+  interval,
   yTickPx = 28,
   xTickEveryMs = 2 * 60 * 1000,
   children,
 }: ChartCanvasProps) {
-  const view = useMemo(() => buildViewModel(points), [points]);
+  const geo = useMemo(() => buildGeometry(points), [points]);
 
-  if (!view) {
+  if (!geo) {
     return <div className="flex-1" />;
   }
+
+  const isCandle =
+    chartType === "candle" || chartType === "hollow" || chartType === "ohlc";
 
   return (
     <div className="relative flex-1 min-h-0">
       <svg
-        viewBox={`0 0 ${view.W} ${view.H}`}
+        viewBox={`0 0 ${geo.W} ${geo.H}`}
         preserveAspectRatio="none"
         className="block h-full w-full"
         // Don't rasterise — we want crisp lines on any DPR.
@@ -56,40 +72,30 @@ export function ChartCanvas({
 
         {/* Y-axis horizontal gridlines + labels (right-aligned, Vela style) */}
         <YAxis
-          minP={view.minP}
-          maxP={view.maxP}
-          W={view.W}
-          H={view.H}
+          minP={geo.minP}
+          maxP={geo.maxP}
+          W={geo.W}
+          H={geo.H}
           tickPx={yTickPx}
         />
 
-        {/* Filled area under the line */}
-        <path d={view.areaPath} fill="url(#area-fill)" />
+        {isCandle ? (
+          <Candles
+            points={points}
+            geo={geo}
+            chartType={chartType}
+            interval={interval}
+          />
+        ) : (
+          <AreaSeries points={points} geo={geo} />
+        )}
 
-        {/* The line itself */}
-        <path
-          d={view.linePath}
-          fill="none"
-          stroke="var(--opt-ink)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Tiny dot on the most recent point */}
-        <circle
-          cx={view.lastX}
-          cy={view.lastY}
-          r="3"
-          fill="var(--opt-ink)"
-        />
-
-        {/* Dashed horizontal line at the latest price */}
+        {/* Dashed horizontal line at the latest price (all modes) */}
         <line
-          x1={view.lastX}
-          x2={view.W - 50}
-          y1={view.lastY}
-          y2={view.lastY}
+          x1={0}
+          x2={geo.W - 50}
+          y1={geo.lastY}
+          y2={geo.lastY}
           stroke="var(--opt-ink)"
           strokeWidth="1"
           strokeDasharray="3 3"
@@ -97,7 +103,7 @@ export function ChartCanvas({
         />
 
         {/* X-axis time ticks under the chart */}
-        <XAxis points={points} W={view.W} H={view.H} everyMs={xTickEveryMs} />
+        <XAxis points={points} W={geo.W} H={geo.H} everyMs={xTickEveryMs} />
       </svg>
 
       {/* Overlay layer — CurrentPriceTag etc. positioned by ChartPanel */}
@@ -108,26 +114,32 @@ export function ChartCanvas({
   );
 }
 
-// ─── view-model + axes ─────────────────────────────────────────────────────
+// ─── geometry ──────────────────────────────────────────────────────────────
 
-interface ViewModel {
+interface Geometry {
   W: number;
   H: number;
   minP: number;
   maxP: number;
-  linePath: string;
-  areaPath: string;
+  padTop: number;
+  padRight: number;
+  innerW: number;
+  innerH: number;
+  /** Map a bare time to a canvas X. */
+  xOf: (t: number) => number;
+  /** Map a bare price to a canvas Y. */
+  yOf: (p: number) => number;
+  /** Map a point to canvas pixels. */
+  xy: (pt: PricePoint) => readonly [number, number];
   lastX: number;
   lastY: number;
-  /** Y position of the latest price in 0–100% (used by overlays). */
-  lastTopPct: number;
 }
 
-function buildViewModel(points: PricePoint[]): ViewModel | null {
+function buildGeometry(points: PricePoint[]): Geometry | null {
   if (points.length < 2) return null;
 
   // Fixed logical viewBox; the SVG fills its host via preserveAspectRatio="none".
-  // We reserve room on the right for the Y-axis labels (50px) and a small bottom strip (28px).
+  // Reserve room on the right for Y-axis labels (56px) and a bottom strip (28px).
   const W = 1000;
   const H = 500;
   const padLeft = 0;
@@ -137,7 +149,7 @@ function buildViewModel(points: PricePoint[]): ViewModel | null {
   const innerW = W - padLeft - padRight;
   const innerH = H - padTop - padBottom;
 
-  // Compute Y bounds with a touch of padding so the line never grazes the edge.
+  // Y bounds with a touch of padding so the series never grazes the edge.
   let minP = Infinity;
   let maxP = -Infinity;
   for (const pt of points) {
@@ -148,41 +160,181 @@ function buildViewModel(points: PricePoint[]): ViewModel | null {
   minP -= range * 0.1;
   maxP += range * 0.1;
 
-  // Map a single point to (x, y) inside the inner rect.
   const x0 = points[0]!.t;
   const xN = points[points.length - 1]!.t;
   const xSpan = Math.max(1, xN - x0);
-  const xy = (pt: PricePoint) => {
-    const x = padLeft + ((pt.t - x0) / xSpan) * innerW;
-    const y = padTop + ((maxP - pt.p) / (maxP - minP)) * innerH;
-    return [x, y] as const;
-  };
 
-  // Build the line + area paths in a single pass.
-  let linePath = "";
-  for (let i = 0; i < points.length; i++) {
-    const [x, y] = xy(points[i]!);
-    linePath += i === 0 ? `M${x} ${y}` : ` L${x} ${y}`;
-  }
-  const [firstX] = xy(points[0]!);
-  const [lastX, lastY] = xy(points[points.length - 1]!);
-  const baseY = padTop + innerH;
-  const areaPath = `${linePath} L${lastX} ${baseY} L${firstX} ${baseY} Z`;
+  const xOf = (t: number) => padLeft + ((t - x0) / xSpan) * innerW;
+  const yOf = (p: number) => padTop + ((maxP - p) / (maxP - minP)) * innerH;
+  const xy = (pt: PricePoint) => [xOf(pt.t), yOf(pt.p)] as const;
 
-  const lastTopPct = ((lastY - padTop) / innerH) * 100 * (innerH / H) + (padTop / H) * 100;
+  const last = points[points.length - 1]!;
+  const [lastX, lastY] = xy(last);
 
   return {
     W,
     H,
     minP,
     maxP,
-    linePath,
-    areaPath,
+    padTop,
+    padRight,
+    innerW,
+    innerH,
+    xOf,
+    yOf,
+    xy,
     lastX,
     lastY,
-    lastTopPct,
   };
 }
+
+// ─── area renderer ─────────────────────────────────────────────────────────
+
+function AreaSeries({
+  points,
+  geo,
+}: {
+  points: PricePoint[];
+  geo: Geometry;
+}) {
+  const { linePath, areaPath } = useMemo(() => {
+    let line = "";
+    for (let i = 0; i < points.length; i++) {
+      const [x, y] = geo.xy(points[i]!);
+      line += i === 0 ? `M${x} ${y}` : ` L${x} ${y}`;
+    }
+    const [firstX] = geo.xy(points[0]!);
+    const baseY = geo.padTop + geo.innerH;
+    const area = `${line} L${geo.lastX} ${baseY} L${firstX} ${baseY} Z`;
+    return { linePath: line, areaPath: area };
+  }, [points, geo]);
+
+  return (
+    <g>
+      <path d={areaPath} fill="url(#area-fill)" />
+      <path
+        d={linePath}
+        fill="none"
+        stroke="var(--opt-ink)"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx={geo.lastX} cy={geo.lastY} r="3" fill="var(--opt-ink)" />
+    </g>
+  );
+}
+
+// ─── candle / hollow / OHLC renderer ───────────────────────────────────────
+
+interface Candle {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+function buildCandles(points: PricePoint[], bucket: number): Candle[] {
+  const out: Candle[] = [];
+  for (let i = 0; i < points.length; i += bucket) {
+    const end = Math.min(i + bucket, points.length);
+    let high = -Infinity;
+    let low = Infinity;
+    for (let j = i; j < end; j++) {
+      const p = points[j]!.p;
+      if (p > high) high = p;
+      if (p < low) low = p;
+    }
+    out.push({
+      t: points[i]!.t,
+      o: points[i]!.p,
+      h: high,
+      l: low,
+      c: points[end - 1]!.p,
+    });
+  }
+  return out;
+}
+
+function Candles({
+  points,
+  geo,
+  chartType,
+  interval,
+}: {
+  points: PricePoint[];
+  geo: Geometry;
+  chartType: ChartTypeId;
+  interval: IntervalId;
+}) {
+  const candles = useMemo(
+    () => buildCandles(points, candleBucketSize(interval)),
+    [points, interval],
+  );
+
+  // Body half-width: a fraction of the average slot so candles don't touch.
+  const slot = candles.length > 1 ? geo.innerW / candles.length : geo.innerW;
+  const halfW = Math.max(1.5, Math.min(14, slot * 0.32));
+
+  return (
+    <g>
+      {candles.map((cdl, i) => {
+        const x = geo.xOf(cdl.t);
+        const up = cdl.c >= cdl.o;
+        const color = up ? "var(--opt-rise)" : "var(--opt-fall)";
+        const yHigh = geo.yOf(cdl.h);
+        const yLow = geo.yOf(cdl.l);
+
+        if (chartType === "ohlc") {
+          const yOpen = geo.yOf(cdl.o);
+          const yClose = geo.yOf(cdl.c);
+          return (
+            <g key={i} stroke={color} strokeWidth="1.5" strokeLinecap="round">
+              <line x1={x} x2={x} y1={yHigh} y2={yLow} />
+              {/* open tick on the left, close tick on the right */}
+              <line x1={x - halfW} x2={x} y1={yOpen} y2={yOpen} />
+              <line x1={x} x2={x + halfW} y1={yClose} y2={yClose} />
+            </g>
+          );
+        }
+
+        // candle + hollow share the wick + body geometry
+        const yOpen = geo.yOf(cdl.o);
+        const yClose = geo.yOf(cdl.c);
+        const bodyTop = Math.min(yOpen, yClose);
+        const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+        // Hollow: up candles are outlined; down candles filled.
+        const hollowUp = chartType === "hollow" && up;
+
+        return (
+          <g key={i}>
+            <line
+              x1={x}
+              x2={x}
+              y1={yHigh}
+              y2={yLow}
+              stroke={color}
+              strokeWidth="1"
+            />
+            <rect
+              x={x - halfW}
+              y={bodyTop}
+              width={halfW * 2}
+              height={bodyH}
+              rx="0.5"
+              fill={hollowUp ? "var(--opt-bg)" : color}
+              stroke={color}
+              strokeWidth="1"
+            />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+// ─── axes ──────────────────────────────────────────────────────────────────
 
 function YAxis({
   minP,
@@ -255,7 +407,6 @@ function XAxis({
   everyMs: number;
 }) {
   const padBottom = 28;
-  const padTop = 12;
   const padRight = 56;
   const innerW = W - padRight;
   const x0 = points[0]!.t;
@@ -298,16 +449,13 @@ function formatTime(ms: number) {
 
 /**
  * Re-exported helper so ChartPanel can compute the overlay top% for the
- * floating price tag without having to look at the view model itself.
+ * floating price tag without having to look at the geometry itself.
  */
 export function topPercentForPrice(
   price: number,
   points: PricePoint[],
 ): number {
-  const view = buildViewModel(points);
-  if (!view) return 50;
-  const innerY = ((view.maxP - price) / (view.maxP - view.minP)) * (view.H - 40) + 12;
-  return (innerY / view.H) * 100;
+  const geo = buildGeometry(points);
+  if (!geo) return 50;
+  return (geo.yOf(price) / geo.H) * 100;
 }
-
-export { type ViewModel as _ViewModel };
