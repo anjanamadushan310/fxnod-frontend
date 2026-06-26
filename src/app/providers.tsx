@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 import { useAuthStore } from "@/stores/authStore";
 
@@ -37,5 +38,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
     void bootstrap();
   }, [bootstrap]);
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {/* Dev-only: the devtools entry self-excludes from production bundles,
+          and this NODE_ENV guard is statically eliminated by Next at build. */}
+      {process.env.NODE_ENV === "development" && (
+        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+      )}
+    </QueryClientProvider>
+  );
 }
