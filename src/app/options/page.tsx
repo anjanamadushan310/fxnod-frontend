@@ -9,7 +9,6 @@ import { findMarket } from "@/components/options/market/catalog";
 import { useChartSettings } from "@/hooks/useChartSettings";
 import { OrderPanel } from "@/components/options/order/OrderPanel";
 import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer";
-import type { ContractTypeId } from "@/components/options/layout/contractTypes";
 import type { OptionsAccountMode } from "@/components/options/layout/AccountSelector";
 
 /**
@@ -42,13 +41,12 @@ export default function OptionsPage() {
 }
 
 function OptionsPageInner() {
-  const [contractType, setContractType] =
-    useState<ContractTypeId>("rise_fall");
   const [accountMode, _setAccountMode] = useState<OptionsAccountMode>("demo");
   const [positionsOpen, setPositionsOpen] = useState(false);
 
-  // Selected market is URL-driven (`?symbol=`), alongside chart_type + interval.
-  const { symbol, setSymbol } = useChartSettings();
+  // Market + contract type are URL-driven (`?symbol=`, `?trade_type=`),
+  // alongside chart_type + interval. No local state for either.
+  const { symbol, setSymbol, tradeType, setTradeType } = useChartSettings();
 
   // TODO Phase F: replace with useAccountBalance() subscription.
   const accountBalance = 2503.2;
@@ -71,8 +69,8 @@ function OptionsPageInner() {
         }
         topbar={
           <TopBar
-            contractType={contractType}
-            onContractTypeChange={setContractType}
+            contractType={tradeType}
+            onContractTypeChange={setTradeType}
             accountMode={accountMode}
             accountBalance={accountBalance}
           />
@@ -82,11 +80,11 @@ function OptionsPageInner() {
             marketId={market.id}
             marketName={market.name}
             seedPrice={market.seedPrice}
-            showStatsStrip={contractType === "accumulators"}
+            showStatsStrip={tradeType === "accumulators"}
             onSelectMarket={setSymbol}
           />
         }
-        order={<OrderPanel contractType={contractType} symbol={market.id} />}
+        order={<OrderPanel contractType={tradeType} symbol={market.id} />}
       />
       {/* Positions drawer slides over from the icon sidebar's right edge */}
       <PositionsDrawer

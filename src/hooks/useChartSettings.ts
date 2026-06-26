@@ -7,8 +7,10 @@ import {
   parseChartType,
   parseInterval,
   parseSymbol,
+  parseTradeType,
   type ChartTypeId,
   type IntervalId,
+  type TradeTypeId,
 } from "@/components/options/chart/chartSettings";
 
 export interface ChartSettings {
@@ -16,9 +18,12 @@ export interface ChartSettings {
   interval: IntervalId;
   /** Active market id (`?symbol=`), validated against the catalog. */
   symbol: string;
+  /** Active contract type (`?trade_type=`), e.g. "rise_fall". */
+  tradeType: TradeTypeId;
   setChartType: (id: ChartTypeId) => void;
   setInterval: (id: IntervalId) => void;
   setSymbol: (id: string) => void;
+  setTradeType: (id: TradeTypeId) => void;
 }
 
 /**
@@ -45,19 +50,23 @@ export function useChartSettings(): ChartSettings {
   const chartType = parseChartType(searchParams.get("chart_type"));
   const interval = parseInterval(searchParams.get("interval"));
   const symbol = parseSymbol(searchParams.get("symbol"));
+  const tradeType = parseTradeType(searchParams.get("trade_type"));
 
   const update = useCallback(
     (patch: {
       chart_type?: ChartTypeId;
       interval?: IntervalId;
       symbol?: string;
+      trade_type?: TradeTypeId;
     }) => {
       // Clone the *current* params so a write to one key never clobbers the
-      // others — chart_type, interval and symbol coexist in the query string.
+      // others — chart_type, interval, symbol and trade_type coexist in the
+      // query string.
       const params = new URLSearchParams(searchParams.toString());
       if (patch.chart_type) params.set("chart_type", patch.chart_type);
       if (patch.interval) params.set("interval", patch.interval);
       if (patch.symbol) params.set("symbol", patch.symbol);
+      if (patch.trade_type) params.set("trade_type", patch.trade_type);
       // `typedRoutes` only knows static hrefs; a runtime query string needs a
       // cast back to the Route brand.
       const href = `${pathname}?${params.toString()}` as Route;
@@ -78,6 +87,19 @@ export function useChartSettings(): ChartSettings {
     (id: string) => update({ symbol: id }),
     [update],
   );
+  const setTradeType = useCallback(
+    (id: TradeTypeId) => update({ trade_type: id }),
+    [update],
+  );
 
-  return { chartType, interval, symbol, setChartType, setInterval, setSymbol };
+  return {
+    chartType,
+    interval,
+    symbol,
+    tradeType,
+    setChartType,
+    setInterval,
+    setSymbol,
+    setTradeType,
+  };
 }

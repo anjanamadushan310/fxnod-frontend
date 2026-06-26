@@ -11,8 +11,17 @@
  */
 
 import { findMarket } from "../market/catalog";
+import { CONTRACT_TYPES, type ContractTypeId } from "../layout/contractTypes";
 
 export type ChartTypeId = "area" | "candle" | "hollow" | "ohlc";
+
+/**
+ * The trading contract type (Rise/Fall, Accumulators, …). We deliberately
+ * alias the existing `ContractTypeId` rather than re-declare the union here —
+ * `CONTRACT_TYPES` in `../layout/contractTypes` is the single source of truth
+ * that also drives the tab bar, so the URL and the tabs can never drift.
+ */
+export type TradeTypeId = ContractTypeId;
 
 export type IntervalId =
   | "1t"
@@ -57,9 +66,12 @@ export const DEFAULT_CHART_TYPE: ChartTypeId = "area";
 export const DEFAULT_INTERVAL: IntervalId = "1t";
 /** Default market shown when `?symbol=` is absent or unknown. */
 export const DEFAULT_SYMBOL = "vol_100_1s";
+/** Default contract type when `?trade_type=` is absent or unknown. */
+export const DEFAULT_TRADE_TYPE: TradeTypeId = "rise_fall";
 
 const CHART_TYPE_IDS = new Set<string>(CHART_TYPES.map((c) => c.id));
 const INTERVAL_IDS = new Set<string>(INTERVALS.map((i) => i.id));
+const TRADE_TYPE_IDS = new Set<string>(CONTRACT_TYPES.map((t) => t.id));
 
 /** Coerce an untrusted `?chart_type=` value to a known id (or the default). */
 export function parseChartType(raw: string | null | undefined): ChartTypeId {
@@ -80,6 +92,13 @@ export function parseInterval(raw: string | null | undefined): IntervalId {
  */
 export function parseSymbol(raw: string | null | undefined): string {
   return raw && findMarket(raw) ? raw : DEFAULT_SYMBOL;
+}
+
+/** Coerce an untrusted `?trade_type=` value to a known id (or the default). */
+export function parseTradeType(raw: string | null | undefined): TradeTypeId {
+  return raw && TRADE_TYPE_IDS.has(raw)
+    ? (raw as TradeTypeId)
+    : DEFAULT_TRADE_TYPE;
 }
 
 /**
