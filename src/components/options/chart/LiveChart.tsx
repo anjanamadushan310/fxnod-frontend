@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   AreaSeries,
   CandlestickSeries,
   ColorType,
   CrosshairMode,
+  LineStyle,
   createChart,
+  createSeriesMarkers,
   type AreaData,
   type CandlestickData,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
@@ -31,6 +43,33 @@ interface LiveChartProps {
   onPrice?: (price: number) => void;
 }
 
+/** A horizontal barrier line (e.g. Rise/Fall entry, Touch/No-Touch barrier). */
+export interface PriceLineSpec {
+  price: number;
+  color?: string;
+  title?: string;
+  /** 1–4. */
+  lineWidth?: number;
+  lineStyle?: LineStyle;
+}
+
+/**
+ * Imperative handle for the future Options overlay layer. Lets ticket panels
+ * draw/clear barrier lines and entry/exit markers without owning the chart.
+ */
+export interface LiveChartHandle {
+  /** Replace all barrier lines. Survives chart-type (series) switches. */
+  setPriceLines: (lines: PriceLineSpec[]) => void;
+  clearPriceLines: () => void;
+  /** Replace time-scale markers (entry/exit/settlement). */
+  setMarkers: (markers: SeriesMarker<Time>[]) => void;
+  getChart: () => IChartApi | null;
+  getSeries: () =>
+    | ISeriesApi<"Area">
+    | ISeriesApi<"Candlestick">
+    | null;
+}
+
 /**
  * Real-time chart backed by lightweight-charts + the Deriv WebSocket feed.
  *
@@ -38,184 +77,232 @@ interface LiveChartProps {
  * tick stream bypasses React's render path entirely — only the connection
  * status (a rare event) is React state. The series type follows `chartType`
  * (area vs candlestick); the wire format follows `interval` (raw ticks vs
- * candles). Switching either is a soft URL change upstream, so this component
- * just reacts to new props.
+ * candles). Overlays (price lines + markers) are stored as specs and
+ * re-applied whenever the series is recreated, so a chart-type switch never
+ * drops the Options barriers an upstream ticket has drawn.
  */
-export function LiveChart({
-  symbol,
-  chartType,
-  interval,
-  onPrice,
-}: LiveChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<
-    ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null
-  >(null);
+export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
+  function LiveChart({ symbol, chartType, interval, onPrice }, ref) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const chartRef = useRef<IChartApi | null>(null);
+    const seriesRef = useRef<
+      ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null
+    >(null);
 
-  // Data buffers — replaced on seed, mutated tail-only on update.
-  const ticksRef = useRef<FeedTick[]>([]);
-  const candlesRef = useRef<FeedCandle[]>([]);
+    // Data buffers — replaced on seed, mutated tail-only on update.
+    const ticksRef = useRef<FeedTick[]>([]);
+    const candlesRef = useRef<FeedCandle[]>([]);
 
-  const [status, setStatus] = useState<FeedStatus>("idle");
+    // Overlay state (specs persist across series recreation).
+    const priceLineSpecsRef = useRef<PriceLineSpec[]>([]);
+    const priceLineObjsRef = useRef<IPriceLine[]>([]);
+    const markersRef = useRef<SeriesMarker<Time>[]>([]);
+    const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
-  const derivSymbol = toDerivSymbol(symbol);
-  const plan = feedPlan(chartType, interval);
-  const seriesKind = plan.seriesKind;
+    const [status, setStatus] = useState<FeedStatus>("idle");
 
-  // ── Chart instance: created once, resized via ResizeObserver ──────────────
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    const derivSymbol = toDerivSymbol(symbol);
+    const plan = feedPlan(chartType, interval);
+    const seriesKind = plan.seriesKind;
 
-    const css = (name: string) =>
-      getComputedStyle(el).getPropertyValue(name).trim();
-    const ink = css("--opt-ink") || "#0a1430";
-    const line = css("--opt-line") || "#e7e4dc";
-    const inkFaint = css("--opt-ink-3") || "#7b8298";
+    // ── Chart instance: created once, resized via ResizeObserver ────────────
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
 
-    const chart = createChart(el, {
-      width: el.clientWidth,
-      height: el.clientHeight,
-      layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: inkFaint,
-        attributionLogo: false,
-      },
-      grid: {
-        vertLines: { color: line, style: 1 },
-        horzLines: { color: line, style: 1 },
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: line },
-      timeScale: { borderColor: line, timeVisible: true, secondsVisible: false },
-      handleScale: true,
-      handleScroll: true,
-    });
-    chartRef.current = chart;
-    void ink; // resolved per-series below
+      const css = (name: string) =>
+        getComputedStyle(el).getPropertyValue(name).trim();
+      const line = css("--opt-line") || "#e7e4dc";
+      const inkFaint = css("--opt-ink-3") || "#7b8298";
 
-    // Keep the canvas matched to its flex container (mandated ResizeObserver).
-    const ro = new ResizeObserver((entries) => {
-      const { width, height } = entries[0]!.contentRect;
-      chart.applyOptions({ width, height });
-    });
-    ro.observe(el);
-
-    return () => {
-      ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
-    };
-  }, []);
-
-  // ── Series: (re)created when the kind changes; rehydrated from buffers ────
-  useEffect(() => {
-    const chart = chartRef.current;
-    const el = containerRef.current;
-    if (!chart || !el) return;
-
-    const css = (name: string) =>
-      getComputedStyle(el).getPropertyValue(name).trim();
-    const ink = css("--opt-ink") || "#0a1430";
-    const rise = css("--opt-rise") || "#1eaf7b";
-    const fall = css("--opt-fall") || "#e0533d";
-
-    if (seriesRef.current) {
-      chart.removeSeries(seriesRef.current);
-      seriesRef.current = null;
-    }
-
-    if (seriesKind === "candlestick") {
-      seriesRef.current = chart.addSeries(CandlestickSeries, {
-        upColor: rise,
-        downColor: fall,
-        borderUpColor: rise,
-        borderDownColor: fall,
-        wickUpColor: rise,
-        wickDownColor: fall,
+      const chart = createChart(el, {
+        width: el.clientWidth,
+        height: el.clientHeight,
+        layout: {
+          background: { type: ColorType.Solid, color: "transparent" },
+          textColor: inkFaint,
+          attributionLogo: false,
+        },
+        grid: {
+          vertLines: { color: line, style: 1 },
+          horzLines: { color: line, style: 1 },
+        },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderColor: line },
+        timeScale: {
+          borderColor: line,
+          timeVisible: true,
+          secondsVisible: false,
+        },
       });
-    } else {
-      seriesRef.current = chart.addSeries(AreaSeries, {
-        lineColor: ink,
-        topColor: hexToRgba(ink, 0.18),
-        bottomColor: hexToRgba(ink, 0),
-        lineWidth: 2,
+      chartRef.current = chart;
+
+      // Keep the canvas matched to its flex container (mandated ResizeObserver).
+      const ro = new ResizeObserver((entries) => {
+        const { width, height } = entries[0]!.contentRect;
+        chart.applyOptions({ width, height });
       });
-    }
+      ro.observe(el);
 
-    hydrateSeries(seriesRef.current, seriesKind, ticksRef.current, candlesRef.current);
-    chart.timeScale().fitContent();
-  }, [seriesKind]);
+      return () => {
+        ro.disconnect();
+        chart.remove();
+        chartRef.current = null;
+        seriesRef.current = null;
+        markersApiRef.current = null;
+        priceLineObjsRef.current = [];
+      };
+    }, []);
 
-  // ── Live feed — pushes straight into the series via refs ──────────────────
-  useDerivChartFeed({
-    derivSymbol,
-    style: plan.style,
-    granularity: plan.granularity,
-    enabled: Boolean(derivSymbol),
-    onStatus: setStatus,
-    onSeedTicks: (ticks) => {
-      ticksRef.current = ticks;
-      if (seriesKind === "area") {
-        (seriesRef.current as ISeriesApi<"Area"> | null)?.setData(
-          toAreaData(ticks),
-        );
-        chartRef.current?.timeScale().fitContent();
+    // ── Series: (re)created when the kind changes; rehydrated + re-overlaid ──
+    useEffect(() => {
+      const chart = chartRef.current;
+      const el = containerRef.current;
+      if (!chart || !el) return;
+
+      const css = (name: string) =>
+        getComputedStyle(el).getPropertyValue(name).trim();
+      const ink = css("--opt-ink") || "#0a1430";
+      const rise = css("--opt-rise") || "#1eaf7b";
+      const fall = css("--opt-fall") || "#e0533d";
+
+      if (seriesRef.current) {
+        chart.removeSeries(seriesRef.current);
+        seriesRef.current = null;
+        priceLineObjsRef.current = []; // died with the old series
+        markersApiRef.current = null;
       }
-      const last = ticks[ticks.length - 1];
-      if (last) onPrice?.(last.value);
-    },
-    onTick: (tick) => {
-      pushTick(ticksRef.current, tick);
-      if (seriesKind === "area") {
-        try {
-          (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
-            time: tick.time as UTCTimestamp,
-            value: tick.value,
-          });
-        } catch {
-          /* out-of-order tick — ignore */
-        }
+
+      if (seriesKind === "candlestick") {
+        seriesRef.current = chart.addSeries(CandlestickSeries, {
+          upColor: rise,
+          downColor: fall,
+          borderUpColor: rise,
+          borderDownColor: fall,
+          wickUpColor: rise,
+          wickDownColor: fall,
+        });
+      } else {
+        seriesRef.current = chart.addSeries(AreaSeries, {
+          lineColor: ink,
+          topColor: hexToRgba(ink, 0.18),
+          bottomColor: hexToRgba(ink, 0),
+          lineWidth: 2,
+        });
       }
-      onPrice?.(tick.value);
-    },
-    onSeedCandles: (candles) => {
-      candlesRef.current = candles;
-      ticksRef.current = candles.map((c) => ({ time: c.time, value: c.close }));
-      hydrateSeries(seriesRef.current, seriesKind, ticksRef.current, candles);
-      chartRef.current?.timeScale().fitContent();
-      const last = candles[candles.length - 1];
-      if (last) onPrice?.(last.close);
-    },
-    onCandle: (candle) => {
-      upsertCandle(candlesRef.current, candle);
-      try {
-        if (seriesKind === "candlestick") {
-          (seriesRef.current as ISeriesApi<"Candlestick"> | null)?.update(
-            toCandleDatum(candle),
+
+      hydrateSeries(
+        seriesRef.current,
+        seriesKind,
+        ticksRef.current,
+        candlesRef.current,
+      );
+      // Re-attach overlays to the fresh series.
+      applyPriceLines(seriesRef.current, priceLineSpecsRef.current, priceLineObjsRef);
+      markersApiRef.current = createSeriesMarkers(
+        seriesRef.current,
+        markersRef.current,
+      );
+      chart.timeScale().fitContent();
+    }, [seriesKind]);
+
+    // ── Live feed — pushes straight into the series via refs ────────────────
+    useDerivChartFeed({
+      derivSymbol,
+      style: plan.style,
+      granularity: plan.granularity,
+      enabled: Boolean(derivSymbol),
+      onStatus: setStatus,
+      onSeedTicks: (ticks) => {
+        ticksRef.current = ticks;
+        if (seriesKind === "area") {
+          (seriesRef.current as ISeriesApi<"Area"> | null)?.setData(
+            toAreaData(ticks),
           );
-        } else {
-          (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
-            time: candle.time as UTCTimestamp,
-            value: candle.close,
-          });
+          chartRef.current?.timeScale().fitContent();
         }
-      } catch {
-        /* out-of-order candle — ignore */
-      }
-      onPrice?.(candle.close);
-    },
-  });
+        const last = ticks[ticks.length - 1];
+        if (last) onPrice?.(last.value);
+      },
+      onTick: (tick) => {
+        pushTick(ticksRef.current, tick);
+        if (seriesKind === "area") {
+          try {
+            (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
+              time: tick.time as UTCTimestamp,
+              value: tick.value,
+            });
+          } catch {
+            /* out-of-order tick — ignore */
+          }
+        }
+        onPrice?.(tick.value);
+      },
+      onSeedCandles: (candles) => {
+        candlesRef.current = candles;
+        ticksRef.current = candles.map((c) => ({
+          time: c.time,
+          value: c.close,
+        }));
+        hydrateSeries(seriesRef.current, seriesKind, ticksRef.current, candles);
+        chartRef.current?.timeScale().fitContent();
+        const last = candles[candles.length - 1];
+        if (last) onPrice?.(last.close);
+      },
+      onCandle: (candle) => {
+        upsertCandle(candlesRef.current, candle);
+        try {
+          if (seriesKind === "candlestick") {
+            (seriesRef.current as ISeriesApi<"Candlestick"> | null)?.update(
+              toCandleDatum(candle),
+            );
+          } else {
+            (seriesRef.current as ISeriesApi<"Area"> | null)?.update({
+              time: candle.time as UTCTimestamp,
+              value: candle.close,
+            });
+          }
+        } catch {
+          /* out-of-order candle — ignore */
+        }
+        onPrice?.(candle.close);
+      },
+    });
 
-  return (
-    <div className="relative h-full w-full min-h-0">
-      <div ref={containerRef} className="absolute inset-0" />
-      <FeedStatusBadge status={status} unsupported={!derivSymbol} />
-    </div>
-  );
-}
+    // ── Imperative overlay API for the future Options layer ─────────────────
+    useImperativeHandle(
+      ref,
+      (): LiveChartHandle => ({
+        setPriceLines: (lines) => {
+          priceLineSpecsRef.current = lines;
+          if (seriesRef.current) {
+            applyPriceLines(seriesRef.current, lines, priceLineObjsRef);
+          }
+        },
+        clearPriceLines: () => {
+          priceLineSpecsRef.current = [];
+          if (seriesRef.current) {
+            applyPriceLines(seriesRef.current, [], priceLineObjsRef);
+          }
+        },
+        setMarkers: (markers) => {
+          markersRef.current = markers;
+          markersApiRef.current?.setMarkers(markers);
+        },
+        getChart: () => chartRef.current,
+        getSeries: () => seriesRef.current,
+      }),
+      [],
+    );
+
+    return (
+      <div className="relative h-full w-full min-h-0">
+        <div ref={containerRef} className="absolute inset-0" />
+        <FeedStatusBadge status={status} unsupported={!derivSymbol} />
+      </div>
+    );
+  },
+);
 
 // ─── status overlay ──────────────────────────────────────────────────────────
 
@@ -244,6 +331,33 @@ function FeedStatusBadge({
     <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-opt-bg-sunk px-2.5 py-1 text-[11px] font-medium text-opt-ink-3">
       {label}
     </div>
+  );
+}
+
+// ─── overlay helpers ─────────────────────────────────────────────────────────
+
+/** Remove any existing price lines on `series`, then draw `specs` afresh. */
+function applyPriceLines(
+  series: ISeriesApi<"Area"> | ISeriesApi<"Candlestick">,
+  specs: PriceLineSpec[],
+  objsRef: React.MutableRefObject<IPriceLine[]>,
+) {
+  for (const line of objsRef.current) {
+    try {
+      series.removePriceLine(line);
+    } catch {
+      /* series may have been recreated — safe to ignore */
+    }
+  }
+  objsRef.current = specs.map((spec) =>
+    series.createPriceLine({
+      price: spec.price,
+      color: spec.color ?? "#7b8298",
+      lineWidth: (spec.lineWidth ?? 1) as 1 | 2 | 3 | 4,
+      lineStyle: spec.lineStyle ?? LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: spec.title ?? "",
+    }),
   );
 }
 
