@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,9 +11,20 @@ import {
   parseDerivCallback,
   type DerivAccount,
 } from "@/services/tradingApi";
+import { useAuthStore } from "@/stores/authStore";
 
 /** sessionStorage key written by whoever calls derivApi.authorize() before redirect. */
 export const DERIV_STATE_KEY = "deriv_link_state";
+/** sessionStorage key holding the in-app path to return to after linking. */
+export const DERIV_RETURN_TO_KEY = "deriv_return_to";
+/**
+ * sessionStorage key recording why the OAuth flow was started, captured
+ * deterministically at click time (not re-derived in the callback, which would
+ * race the auth bootstrap):
+ *   "login" — logged-out visitor; Deriv mints an FXNod session
+ *   "link"  — already-authenticated user linking/switching a trading account
+ */
+export const DERIV_INTENT_KEY = "deriv_oauth_intent";
 
 type Phase =
   | { name: "loading" }
@@ -31,6 +43,7 @@ export function CallbackInner() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const linkMutation = useDerivLink();
+  const loginWithDeriv = useAuthStore((s) => s.loginWithDeriv);
   const [phase, setPhase] = useState<Phase>({ name: "loading" });
   // Capture state once on mount — don't re-read on every render.
   const oauthStateRef = useRef<string | null>(null);
@@ -81,21 +94,33 @@ export function CallbackInner() {
     }
     setPhase({ name: "linking" });
     try {
-      await linkMutation.mutateAsync({
-        data: {
-          state,
-          token: account.token,
-          deriv_account_id: account.account,
-          currency: account.currency,
-          is_virtual: account.isVirtual,
-        },
-      });
+      const payload = {
+        state,
+        token: account.token,
+        deriv_account_id: account.account,
+        currency: account.currency,
+        is_virtual: account.isVirtual,
+      };
+
+      if (sessionStorage.getItem(DERIV_INTENT_KEY) === "link") {
+        // Already authenticated → link/switch the trading account.
+        await linkMutation.mutateAsync({ data: payload });
+      } else {
+        // Logged-out → Deriv OAuth IS the login: mint the FXNod session and
+        // flip the auth store to authenticated (sets the httpOnly cookie).
+        await loginWithDeriv(payload);
+      }
+
       sessionStorage.removeItem(DERIV_STATE_KEY);
+      sessionStorage.removeItem(DERIV_INTENT_KEY);
+      // Return the user to wherever they started the flow (default /options).
+      const returnTo = safeReturnPath(sessionStorage.getItem(DERIV_RETURN_TO_KEY));
+      sessionStorage.removeItem(DERIV_RETURN_TO_KEY);
       // Refresh the shared link-status cache so the TopBar control + the order
       // panels' trade gate flip to "linked" immediately.
       await queryClient.invalidateQueries({ queryKey: derivStatusKey });
       setPhase({ name: "done", accountId: account.account });
-      setTimeout(() => router.push("/options"), 1800);
+      setTimeout(() => router.push(returnTo), 1800);
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response
         ?.data?.detail;
@@ -140,6 +165,16 @@ export function CallbackInner() {
       />
     </PageShell>
   );
+}
+
+/**
+ * Guard against open redirects and loops: only allow same-origin in-app paths,
+ * and never bounce back to the callback page itself.
+ */
+function safeReturnPath(raw: string | null): Route {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/options" as Route;
+  if (raw.startsWith("/deriv/callback")) return "/options" as Route;
+  return raw as Route;
 }
 
 // ─── Layout shell ────────────────────────────────────────────────────────────

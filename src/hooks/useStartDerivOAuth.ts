@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { DERIV_STATE_KEY } from "@/app/deriv/callback/CallbackInner";
+import {
+  DERIV_INTENT_KEY,
+  DERIV_RETURN_TO_KEY,
+  DERIV_STATE_KEY,
+} from "@/app/deriv/callback/CallbackInner";
 import { derivApi } from "@/services/tradingApi";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * Kicks off the Deriv OAuth round-trip — shared by the TopBar "Connect Deriv"
@@ -27,6 +32,16 @@ export function useStartDerivOAuth() {
     try {
       const { authorize_url, state } = await derivApi.authorize();
       sessionStorage.setItem(DERIV_STATE_KEY, state);
+      // Capture intent NOW (authenticated → link, else → Deriv-as-login) so the
+      // callback doesn't have to race the auth bootstrap to decide.
+      const intent =
+        useAuthStore.getState().status === "authenticated" ? "link" : "login";
+      sessionStorage.setItem(DERIV_INTENT_KEY, intent);
+      // Remember where we started so the callback can return the user here.
+      sessionStorage.setItem(
+        DERIV_RETURN_TO_KEY,
+        window.location.pathname + window.location.search,
+      );
       window.location.href = authorize_url;
     } catch (e) {
       setRedirecting(false);

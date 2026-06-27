@@ -35,6 +35,17 @@ export interface RegisterPayload {
   phone?: string;
 }
 
+export interface DerivLoginPayload {
+  /** CSRF state issued by /deriv/oauth/authorize at the start of the flow. */
+  state: string;
+  /** Deriv OAuth token for the chosen account. */
+  token: string;
+  /** Deriv loginid, e.g. CR123456 / VRTC987654. */
+  deriv_account_id: string;
+  currency?: string;
+  is_virtual?: boolean;
+}
+
 export const authApi = {
   async login(email: string, password: string): Promise<LoginResponse> {
     const res = await api.post<LoginResponse>("/api/v1/auth/login", {
@@ -49,6 +60,16 @@ export const authApi = {
       "/api/v1/auth/register",
       payload,
     );
+    return res.data;
+  },
+
+  /**
+   * Deriv-as-login: mint an FXNod session from a Deriv OAuth token. PUBLIC
+   * endpoint (no bearer) — sets the httpOnly refresh cookie and returns the
+   * access token, same session shape as login().
+   */
+  async loginWithDeriv(payload: DerivLoginPayload): Promise<LoginResponse> {
+    const res = await api.post<LoginResponse>("/api/v1/auth/deriv", payload);
     return res.data;
   },
 

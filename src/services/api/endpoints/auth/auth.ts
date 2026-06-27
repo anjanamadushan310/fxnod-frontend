@@ -42,6 +42,7 @@ import type {
 
 import type {
   AccessToken,
+  DerivLoginRequest,
   Error,
   LoginRequest,
   MessageResponse,
@@ -386,6 +387,76 @@ export const useLogout = <TError = ErrorType<unknown>,
       > => {
 
       const mutationOptions = getLogoutMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * PUBLIC (no bearer). Mints an FXNod session from a Deriv OAuth token:
+validates the OAuth `state`, finds-or-creates the FXNod user keyed by the
+Deriv account, stores the encrypted Deriv token (account linking), sets
+the httpOnly refresh cookie, and returns an access token — same session
+shape as /api/v1/auth/login.
+
+ * @summary Log in with Deriv OAuth
+ */
+export const loginWithDeriv = (
+    derivLoginRequest: BodyType<DerivLoginRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<TokenPair>(
+      {url: `/api/v1/auth/deriv`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: derivLoginRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getLoginWithDerivMutationOptions = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginWithDeriv>>, TError,{data: BodyType<DerivLoginRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginWithDeriv>>, TError,{data: BodyType<DerivLoginRequest>}, TContext> => {
+
+const mutationKey = ['loginWithDeriv'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginWithDeriv>>, {data: BodyType<DerivLoginRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginWithDeriv(data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginWithDerivMutationResult = NonNullable<Awaited<ReturnType<typeof loginWithDeriv>>>
+    export type LoginWithDerivMutationBody = BodyType<DerivLoginRequest>
+    export type LoginWithDerivMutationError = ErrorType<Error | ValidationErrorResponse>
+
+    /**
+ * @summary Log in with Deriv OAuth
+ */
+export const useLoginWithDeriv = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginWithDeriv>>, TError,{data: BodyType<DerivLoginRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof loginWithDeriv>>,
+        TError,
+        {data: BodyType<DerivLoginRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getLoginWithDerivMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

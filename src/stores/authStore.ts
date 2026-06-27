@@ -1,7 +1,11 @@
 "use client";
 
 import { create } from "zustand";
-import { authApi, type UserPublic } from "@/services/authApi";
+import {
+  authApi,
+  type DerivLoginPayload,
+  type UserPublic,
+} from "@/services/authApi";
 import {
   registerAuthExpiredHandler,
   setAccessToken,
@@ -22,6 +26,7 @@ interface AuthState {
   user: UserPublic | null;
   status: "idle" | "loading" | "authenticated" | "anonymous";
   login: (email: string, password: string) => Promise<void>;
+  loginWithDeriv: (payload: DerivLoginPayload) => Promise<void>;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;
 }
@@ -39,6 +44,17 @@ export const useAuthStore = create<AuthState>((set) => {
     async login(email, password) {
       set({ status: "loading" });
       const { access_token } = await authApi.login(email, password);
+      setAccessToken(access_token);
+      const user = await authApi.me();
+      set({ user, status: "authenticated" });
+    },
+
+    // Deriv-as-login: same post-login sequence as login(), but the session is
+    // minted from the Deriv OAuth token. The backend sets the httpOnly refresh
+    // cookie, so the existing refresh interceptor + bootstrap() keep it alive.
+    async loginWithDeriv(payload) {
+      set({ status: "loading" });
+      const { access_token } = await authApi.loginWithDeriv(payload);
       setAccessToken(access_token);
       const user = await authApi.me();
       set({ user, status: "authenticated" });

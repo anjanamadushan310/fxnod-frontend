@@ -51,6 +51,7 @@ export * from './depositAddressResponse';
 export * from './derivAccountStatus';
 export * from './derivLinkRequest';
 export * from './derivLinkResponse';
+export * from './derivLoginRequest';
 export * from './derivPayoutIn';
 export * from './derivPayoutReceivedEvent';
 export * from './derivUnlink200';
