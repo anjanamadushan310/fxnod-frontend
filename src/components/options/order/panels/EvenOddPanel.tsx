@@ -56,6 +56,7 @@ export function EvenOddPanel({ symbol }: EvenOddPanelProps) {
           disabled={!canBuy}
           payoutLabel={payoutLabel}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
+          loading={buyPhase === "buying"}
           onClick={handleBuy}
         />
       </div>

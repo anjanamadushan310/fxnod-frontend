@@ -88,6 +88,7 @@ export function MultipliersPanel({ symbol }: MultipliersPanelProps) {
           disabled={!canBuy}
           payoutLabel={payoutLabel}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
+          loading={buyPhase === "buying"}
           onClick={handleBuy}
         />
       </div>

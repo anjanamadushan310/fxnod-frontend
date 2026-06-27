@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectDerivButton } from "../deriv/ConnectDerivButton";
 import { AccountSelector, type OptionsAccountMode } from "./AccountSelector";
 import { ContractTypeTabs } from "./ContractTypeTabs";
 import { DepositButton } from "./DepositButton";
@@ -30,6 +31,8 @@ export function TopBar({
   return (
     <div className="flex h-full items-center gap-2 px-4">
       <ContractTypeTabs value={contractType} onChange={onContractTypeChange} />
+
+      <ConnectDerivButton />
 
       <AccountSelector
         mode={accountMode}

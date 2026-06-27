@@ -63,6 +63,7 @@ export function AccumulatorsPanel({ symbol }: AccumulatorsPanelProps) {
           disabled={!canBuy}
           payoutLabel={payoutLabel}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
+          loading={buyPhase === "buying"}
           onClick={handleBuy}
         />
       </div>

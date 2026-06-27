@@ -13,6 +13,8 @@ interface BuyButtonProps {
   onClick?: () => void;
   /** Override the main label — defaults to "Buy". */
   label?: string;
+  /** Show an inline spinner + force-disable while a trade is being placed. */
+  loading?: boolean;
 }
 
 /**
@@ -32,12 +34,14 @@ export function BuyButton({
   payoutLabel,
   onClick,
   label = "Buy",
+  loading = false,
 }: BuyButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading}
       className={cn(
         "flex w-full flex-col items-center gap-0.5 rounded-[10px] border-0 px-4 py-3 text-white",
         "text-[14px] font-semibold transition-[filter] duration-150",
@@ -45,7 +49,15 @@ export function BuyButton({
         side === "fall" ? "bg-opt-fall" : "bg-opt-rise",
       )}
     >
-      <span>{label}</span>
+      <span className="inline-flex items-center gap-1.5">
+        {loading && (
+          <span
+            aria-hidden
+            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+          />
+        )}
+        {label}
+      </span>
       {payoutLabel && (
         <span className="font-mono text-[11px] font-medium text-white/90 tabular-nums">
           {payoutLabel}

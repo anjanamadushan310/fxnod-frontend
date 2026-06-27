@@ -70,6 +70,7 @@ export function TurbosPanel({ symbol }: TurbosPanelProps) {
           disabled={!canBuy}
           payoutLabel={payoutLabel}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
+          loading={buyPhase === "buying"}
           onClick={handleBuy}
         />
       </div>

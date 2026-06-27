@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useDerivLink } from "@/services/api/endpoints/trading/trading";
+import { derivStatusKey } from "@/hooks/useDerivStatus";
 import {
   derivApi,
   parseDerivCallback,
@@ -26,6 +29,8 @@ type Phase =
 export function CallbackInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const linkMutation = useDerivLink();
   const [phase, setPhase] = useState<Phase>({ name: "loading" });
   // Capture state once on mount — don't re-read on every render.
   const oauthStateRef = useRef<string | null>(null);
@@ -76,8 +81,19 @@ export function CallbackInner() {
     }
     setPhase({ name: "linking" });
     try {
-      await derivApi.link(account, state);
+      await linkMutation.mutateAsync({
+        data: {
+          state,
+          token: account.token,
+          deriv_account_id: account.account,
+          currency: account.currency,
+          is_virtual: account.isVirtual,
+        },
+      });
       sessionStorage.removeItem(DERIV_STATE_KEY);
+      // Refresh the shared link-status cache so the TopBar control + the order
+      // panels' trade gate flip to "linked" immediately.
+      await queryClient.invalidateQueries({ queryKey: derivStatusKey });
       setPhase({ name: "done", accountId: account.account });
       setTimeout(() => router.push("/options"), 1800);
     } catch (e) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Toaster } from "sonner";
 
 import { useAuthStore } from "@/stores/authStore";
 
@@ -41,6 +42,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
+      {/* App-wide toast portal (trade results, Deriv linking, …). */}
+      <Toaster richColors position="top-center" closeButton />
       {/* Dev-only: the devtools entry self-excludes from production bundles,
           and this NODE_ENV guard is statically eliminated by Next at build. */}
       {process.env.NODE_ENV === "development" && (
