@@ -15,13 +15,8 @@ interface ContractTypeTabsProps {
  */
 export function ContractTypeTabs({ value, onChange }: ContractTypeTabsProps) {
   return (
-    <div
-      className={cn(
-        "flex flex-1 gap-0.5 overflow-x-auto",
-        // Hide the scrollbar without losing scrollability.
-        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-      )}
-    >
+    // Overflow/scroll is owned by the TopBar wrapper; this is just the pill row.
+    <div className="flex gap-0.5">
       {CONTRACT_TYPES.map((type) => {
         const active = type.id === value;
         return (

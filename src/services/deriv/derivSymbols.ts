@@ -81,6 +81,22 @@ export function toDerivSymbol(catalogId: string): string | undefined {
   return CATALOG_TO_DERIV[catalogId];
 }
 
+// Reverse index so the URL can carry Deriv-style codes (e.g. ?symbol=1HZ100V)
+// while the rest of the app keeps speaking catalog ids.
+const DERIV_TO_CATALOG: Record<string, string> = Object.fromEntries(
+  Object.entries(CATALOG_TO_DERIV).map(([catalogId, deriv]) => [
+    deriv,
+    catalogId,
+  ]),
+);
+
+/** Deriv symbol (e.g. "1HZ100V") → catalog id, or undefined if unknown. */
+export function fromDerivSymbol(
+  code: string | null | undefined,
+): string | undefined {
+  return code ? DERIV_TO_CATALOG[code] : undefined;
+}
+
 // ─── Interval → candle granularity (seconds) ─────────────────────────────────
 // Only the granularities Deriv accepts for `ticks_history` candles.
 const INTERVAL_GRANULARITY: Record<Exclude<IntervalId, "1t">, number> = {

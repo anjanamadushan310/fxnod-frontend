@@ -1,6 +1,8 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import type { Route } from "next";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChartPanel } from "@/components/options/chart/ChartPanel";
 import { IconSidebar } from "@/components/options/layout/IconSidebar";
 import { OptionsShell } from "@/components/options/layout/OptionsShell";
@@ -40,7 +42,25 @@ export default function OptionsPage() {
   );
 }
 
+/** Canonical default deep-link for a bare `/options` visit. */
+const DEFAULT_OPTIONS_QUERY =
+  "?chart_type=area&interval=1t&symbol=1HZ100V&trade_type=rise_fall";
+
 function OptionsPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Bare /options → pin the full default query so the URL is always explicit
+  // and shareable. The guard (empty params only) means the post-replace render
+  // — now with params — can't re-trigger it, so there's no redirect loop.
+  useEffect(() => {
+    if (searchParams.toString() === "") {
+      router.replace(`/options${DEFAULT_OPTIONS_QUERY}` as Route, {
+        scroll: false,
+      });
+    }
+  }, [searchParams, router]);
+
   const [accountMode, _setAccountMode] = useState<OptionsAccountMode>("demo");
   const [positionsOpen, setPositionsOpen] = useState(false);
 

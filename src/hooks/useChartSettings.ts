@@ -12,6 +12,7 @@ import {
   type IntervalId,
   type TradeTypeId,
 } from "@/components/options/chart/chartSettings";
+import { fromDerivSymbol, toDerivSymbol } from "@/services/deriv/derivSymbols";
 
 export interface ChartSettings {
   chartType: ChartTypeId;
@@ -49,7 +50,10 @@ export function useChartSettings(): ChartSettings {
 
   const chartType = parseChartType(searchParams.get("chart_type"));
   const interval = parseInterval(searchParams.get("interval"));
-  const symbol = parseSymbol(searchParams.get("symbol"));
+  // The URL carries the Deriv code (e.g. 1HZ100V); map it back to a catalog id
+  // for internal use. Legacy catalog-id params still work (fromDerivSymbol → undefined).
+  const rawSymbol = searchParams.get("symbol");
+  const symbol = parseSymbol(fromDerivSymbol(rawSymbol) ?? rawSymbol);
   const tradeType = parseTradeType(searchParams.get("trade_type"));
 
   const update = useCallback(
@@ -84,7 +88,9 @@ export function useChartSettings(): ChartSettings {
     [update],
   );
   const setSymbol = useCallback(
-    (id: string) => update({ symbol: id }),
+    // Store the Deriv code in the URL when we have one (keeps deep-links
+    // Deriv-style); fall back to the catalog id for markets Deriv doesn't list.
+    (id: string) => update({ symbol: toDerivSymbol(id) ?? id }),
     [update],
   );
   const setTradeType = useCallback(
