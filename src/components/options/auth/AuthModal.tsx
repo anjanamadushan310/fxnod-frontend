@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
-import { ConnectDerivButton } from "../deriv/ConnectDerivButton";
+import { useStartDerivOAuth } from "@/hooks/useStartDerivOAuth";
 
 interface AuthModalProps {
   open: boolean;
@@ -16,6 +16,8 @@ interface AuthModalProps {
  * account and start trading.
  */
 export function AuthModal({ open, onClose }: AuthModalProps) {
+  const { start, redirecting } = useStartDerivOAuth();
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -56,19 +58,32 @@ export function AuthModal({ open, onClose }: AuthModalProps) {
             DT
           </div>
           <h2 className="text-[18px] font-bold text-opt-ink">
-            Welcome to FXNod
+            Log in to FXNod
           </h2>
           <p className="text-[13px] leading-relaxed text-opt-ink-3">
-            Connect your Deriv account to fund your balance, place trades, and
-            track your positions in real time.
+            FXNod uses your Deriv account to sign in. Continue with Deriv to
+            fund your balance, place trades, and track positions in real time.
           </p>
         </div>
 
         <div className="mt-5 flex flex-col gap-3">
-          <ConnectDerivButton />
+          <button
+            type="button"
+            onClick={start}
+            disabled={redirecting}
+            className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-opt-ink px-4 py-2.5 text-[14px] font-semibold text-opt-bg transition-[filter] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {redirecting && (
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-opt-bg/40 border-t-opt-bg"
+              />
+            )}
+            {redirecting ? "Redirecting to Deriv…" : "Continue with Deriv"}
+          </button>
           <p className="text-center text-[11px] leading-relaxed text-opt-ink-4">
-            You’ll be redirected to Deriv to authorise the connection. We never
-            see your Deriv password.
+            You’ll be redirected to Deriv to authorise sign-in. We never see
+            your Deriv password.
           </p>
         </div>
       </div>

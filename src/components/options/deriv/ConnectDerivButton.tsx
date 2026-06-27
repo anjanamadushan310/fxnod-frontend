@@ -1,44 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
-import { DERIV_STATE_KEY } from "@/app/deriv/callback/CallbackInner";
 import { useDerivStatus } from "@/hooks/useDerivStatus";
-import { derivApi } from "@/services/tradingApi";
+import { useStartDerivOAuth } from "@/hooks/useStartDerivOAuth";
 import { cn } from "@/lib/cn";
 
 /**
- * Top-bar control for Deriv account linking.
+ * Top-bar control for Deriv account linking (authenticated users).
  *
  *  - Reads link status via the Orval-generated `derivAccountStatus` query
- *    (→ GET /api/v1/deriv/account/status through the shared axios instance,
- *    so it honours NEXT_PUBLIC_API_URL + auth automatically).
- *  - When unlinked, starts the OAuth flow through OUR backend
- *    (`/api/v1/deriv/oauth/authorize`), which returns the Deriv authorize URL
- *    plus a CSRF `state`. We stash the state (the callback validates it on
- *    `/link`) and hand the browser off to Deriv.
- *
- * We deliberately use the backend-issued authorize URL rather than building
- * `oauth.deriv.com/...` on the client: the callback + link endpoint require
- * the backend-issued `state`, so a client-built URL would fail CSRF checks.
+ *    (→ GET /api/v1/deriv/account/status through the shared axios instance).
+ *  - When unlinked, starts the OAuth flow via `useStartDerivOAuth` (shared with
+ *    the login modal's "Continue with Deriv" button).
  */
 export function ConnectDerivButton() {
-  const [redirecting, setRedirecting] = useState(false);
   const { linked, accountId, isLoading } = useDerivStatus();
-
-  async function connect() {
-    setRedirecting(true);
-    try {
-      const { authorize_url, state } = await derivApi.authorize();
-      sessionStorage.setItem(DERIV_STATE_KEY, state);
-      window.location.href = authorize_url;
-    } catch (e) {
-      setRedirecting(false);
-      toast.error("Couldn’t start Deriv connection", {
-        description: detailOf(e) ?? "Please try again.",
-      });
-    }
-  }
+  const { start, redirecting } = useStartDerivOAuth();
 
   if (linked) {
     return (
@@ -56,7 +32,7 @@ export function ConnectDerivButton() {
   return (
     <button
       type="button"
-      onClick={connect}
+      onClick={start}
       disabled={redirecting || isLoading}
       className={cn(
         "flex flex-shrink-0 items-center gap-1.5 rounded-[10px] px-3 py-1.5",
@@ -73,12 +49,5 @@ export function ConnectDerivButton() {
       )}
       {redirecting ? "Redirecting…" : "Connect Deriv"}
     </button>
-  );
-}
-
-function detailOf(e: unknown): string | null {
-  return (
-    (e as { response?: { data?: { detail?: string } } })?.response?.data
-      ?.detail ?? null
   );
 }
