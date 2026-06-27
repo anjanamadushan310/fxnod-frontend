@@ -515,4 +515,75 @@ export const useConfirmProposal = <TError = ErrorType<Error | UnauthorizedRespon
 
       return useMutation(mutationOptions, queryClient);
     }
+    /**
+ * Convenience endpoint that runs the proposal and buy steps back-to-back
+with no confirmation window. Same request body as /orders/proposal; same
+response as /orders/confirm. The buy is still capped at the freshly
+quoted ask price, but there is no displayed-quote step — prefer the
+two-phase /orders/proposal → /orders/confirm flow when you want to show
+the user the payout before committing.
+
+ * @summary Place a single-shot trade (proposal + immediate buy)
+ */
+export const placeTrade = (
+    proposalRequest: BodyType<ProposalRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<ConfirmResponse>(
+      {url: `/api/v1/orders/trade`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: proposalRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getPlaceTradeMutationOptions = <TError = ErrorType<Error | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof placeTrade>>, TError,{data: BodyType<ProposalRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof placeTrade>>, TError,{data: BodyType<ProposalRequest>}, TContext> => {
+
+const mutationKey = ['placeTrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof placeTrade>>, {data: BodyType<ProposalRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  placeTrade(data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlaceTradeMutationResult = NonNullable<Awaited<ReturnType<typeof placeTrade>>>
+    export type PlaceTradeMutationBody = BodyType<ProposalRequest>
+    export type PlaceTradeMutationError = ErrorType<Error | UnauthorizedResponse>
+
+    /**
+ * @summary Place a single-shot trade (proposal + immediate buy)
+ */
+export const usePlaceTrade = <TError = ErrorType<Error | UnauthorizedResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof placeTrade>>, TError,{data: BodyType<ProposalRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof placeTrade>>,
+        TError,
+        {data: BodyType<ProposalRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getPlaceTradeMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
     
