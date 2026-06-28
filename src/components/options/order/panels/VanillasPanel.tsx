@@ -34,7 +34,7 @@ export function VanillasPanel({ symbol }: VanillasPanelProps) {
         })
       : null;
 
-  const { buyPhase, lastTrade, canBuy, payoutLabel, errorMsg, handleBuy, handleNewTrade } =
+  const { buyPhase, lastTrade, canBuy, errorMsg, handleBuy, handleNewTrade } =
     usePanelBuy(request);
 
   if (buyPhase === "confirmed" && lastTrade) {
@@ -69,9 +69,10 @@ export function VanillasPanel({ symbol }: VanillasPanelProps) {
       )}
       <div className="mt-auto">
         <BuyButton
-          side="neutral"
+          side={side}
           disabled={!canBuy}
-          payoutLabel={payoutLabel}
+          /* §7: Vanillas Call=green / Put=red, no fixed payout sub-text. */
+          payoutLabel={null}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
           loading={buyPhase === "buying"}
           onClick={handleBuy}

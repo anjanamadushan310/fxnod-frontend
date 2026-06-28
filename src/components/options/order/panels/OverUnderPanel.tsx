@@ -71,7 +71,7 @@ export function OverUnderPanel({ symbol }: OverUnderPanelProps) {
       )}
       <div className="mt-auto">
         <BuyButton
-          side="neutral"
+          side={side}
           disabled={!canBuy}
           payoutLabel={payoutLabel}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}

@@ -23,7 +23,7 @@ interface MultipliersPanelProps {
 
 export function MultipliersPanel({ symbol }: MultipliersPanelProps) {
   const [side, setSide] = useState<Side>("rise");
-  const [multiplier] = useState<number>(400);
+  const [multiplier, setMultiplier] = useState<number>(400);
   const [stake, setStake] = useState<number>(10);
   const [riskOpen, setRiskOpen] = useState(false);
   const [risk, setRisk] = useState<RiskManagementConfig>({
@@ -44,7 +44,7 @@ export function MultipliersPanel({ symbol }: MultipliersPanelProps) {
         })
       : null;
 
-  const { buyPhase, lastTrade, canBuy, payoutLabel, errorMsg, handleBuy, handleNewTrade } =
+  const { buyPhase, lastTrade, canBuy, errorMsg, handleBuy, handleNewTrade } =
     usePanelBuy(request);
 
   if (buyPhase === "confirmed" && lastTrade) {
@@ -57,12 +57,7 @@ export function MultipliersPanel({ symbol }: MultipliersPanelProps) {
     <div className="flex h-full flex-col gap-3 p-4">
       <HowToTradeLink contractLabel="Multipliers" />
       <UpDownToggle value={side} onChange={setSide} />
-      <MultiplierField
-        value={multiplier}
-        onOpen={() => {
-          /* picker not yet implemented — multiplier stays at selected value */
-        }}
-      />
+      <MultiplierField value={multiplier} onChange={setMultiplier} />
       <StakeField value={stake} onChange={setStake} min={1} max={2000} />
       <RiskManagementField
         summary={summariseRisk(risk)}
@@ -86,7 +81,8 @@ export function MultipliersPanel({ symbol }: MultipliersPanelProps) {
         <BuyButton
           side={side}
           disabled={!canBuy}
-          payoutLabel={payoutLabel}
+          /* §7: Multipliers show no fixed payout (open-ended P/L). */
+          payoutLabel={null}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
           loading={buyPhase === "buying"}
           onClick={handleBuy}

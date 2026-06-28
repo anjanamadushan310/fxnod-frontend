@@ -16,7 +16,7 @@ interface AccumulatorsPanelProps {
 }
 
 export function AccumulatorsPanel({ symbol }: AccumulatorsPanelProps) {
-  const [growthRate, setGrowthRate] = useState<number>(3);
+  const [growthRate, setGrowthRate] = useState<number>(1); // §6.2 default 1%
   const [stake, setStake] = useState<number>(10);
   const [takeProfit, setTakeProfit] = useState<number | null>(null);
 
@@ -31,7 +31,7 @@ export function AccumulatorsPanel({ symbol }: AccumulatorsPanelProps) {
         })
       : null;
 
-  const { buyPhase, lastTrade, canBuy, payoutLabel, errorMsg, handleBuy, handleNewTrade } =
+  const { buyPhase, lastTrade, canBuy, errorMsg, handleBuy, handleNewTrade } =
     usePanelBuy(request);
 
   if (buyPhase === "confirmed" && lastTrade) {
@@ -51,8 +51,9 @@ export function AccumulatorsPanel({ symbol }: AccumulatorsPanelProps) {
         onChange={setTakeProfit}
       />
       <div className="flex flex-col gap-1.5 py-1">
+        <SummaryRow label="Max. payout" value="6,000.00 USD" />
         <SummaryRow label="Barrier" value={`± ${barrier.toFixed(5)}%`} />
-        <SummaryRow label="Max. duration" value="85 ticks" />
+        <SummaryRow label="Max. duration" value="250 ticks" />
       </div>
       {errorMsg && (
         <p className="px-1 text-[11px] leading-snug text-opt-fall">{errorMsg}</p>
@@ -61,7 +62,8 @@ export function AccumulatorsPanel({ symbol }: AccumulatorsPanelProps) {
         <BuyButton
           side="neutral"
           disabled={!canBuy}
-          payoutLabel={payoutLabel}
+          /* §7: Accumulators show no fixed payout sub-text. */
+          payoutLabel={null}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
           loading={buyPhase === "buying"}
           onClick={handleBuy}

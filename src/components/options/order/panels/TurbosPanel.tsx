@@ -20,7 +20,8 @@ interface TurbosPanelProps {
 
 export function TurbosPanel({ symbol }: TurbosPanelProps) {
   const [side, setSide] = useState<Side>("rise");
-  const [duration, setDuration] = useDefaultDuration();
+  // §13: Turbos default 5 ticks.
+  const [duration, setDuration] = useDefaultDuration({ amount: 5, unit: "ticks" });
   const [stake, setStake] = useState<number>(10);
   const [takeProfit, setTakeProfit] = useState<number | null>(null);
 
@@ -36,7 +37,7 @@ export function TurbosPanel({ symbol }: TurbosPanelProps) {
         })
       : null;
 
-  const { buyPhase, lastTrade, canBuy, payoutLabel, errorMsg, handleBuy, handleNewTrade } =
+  const { buyPhase, lastTrade, canBuy, errorMsg, handleBuy, handleNewTrade } =
     usePanelBuy(request);
 
   if (buyPhase === "confirmed" && lastTrade) {
@@ -68,7 +69,8 @@ export function TurbosPanel({ symbol }: TurbosPanelProps) {
         <BuyButton
           side={side}
           disabled={!canBuy}
-          payoutLabel={payoutLabel}
+          /* §7: Turbos show payout-per-point, not a fixed total payout. */
+          payoutLabel={null}
           label={buyPhase !== "idle" ? "Placing…" : "Buy"}
           loading={buyPhase === "buying"}
           onClick={handleBuy}
