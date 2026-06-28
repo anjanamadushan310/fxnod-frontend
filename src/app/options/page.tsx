@@ -14,7 +14,16 @@ import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer"
 import { ContractDetailsModal } from "@/components/options/positions/ContractDetailsModal";
 import { usePositionsUI } from "@/stores/usePositionsUI";
 import { useOpenPositions } from "@/stores/useOpenPositions";
+import { usePositionsWebSocket } from "@/hooks/usePositionsWebSocket";
+import { useAuthStore } from "@/stores/authStore";
 import type { OptionsAccountMode } from "@/components/options/layout/AccountSelector";
+
+/**
+ * Gate the positions WS behind a flag until the Go `/ws/positions` stream is
+ * live — set NEXT_PUBLIC_POSITIONS_WS=1 to enable. Off → the drawer keeps using
+ * the placeholder P/L drift.
+ */
+const POSITIONS_WS_ENABLED = process.env.NEXT_PUBLIC_POSITIONS_WS === "1";
 
 /**
  * /options — Deriv options trading page.
@@ -71,6 +80,11 @@ function OptionsPageInner() {
   const togglePositions = usePositionsUI((s) => s.toggle);
   const setPositionsOpen = usePositionsUI((s) => s.setOpen);
   const positionsCount = useOpenPositions((s) => s.positions.length);
+
+  // Real-time P/L stream — runs whenever authenticated (needs the access token
+  // for the WS handshake) and the feature flag is on.
+  const authed = useAuthStore((s) => s.status === "authenticated");
+  usePositionsWebSocket(POSITIONS_WS_ENABLED && authed);
 
   // Market + contract type are URL-driven (`?symbol=`, `?trade_type=`),
   // alongside chart_type + interval. No local state for either.

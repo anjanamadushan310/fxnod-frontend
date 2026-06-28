@@ -143,6 +143,10 @@ function applyPostTrade(request: ProposalRequest, trade: ConfirmResponse) {
   usePositionsUI.getState().setOpen(true);
 
   useOpenPositions.getState().add({
+    // Correlation key for the positions WS stream (entry/barrier/timestamps
+    // below stay on the live-price fallback until the backend extends
+    // ConfirmResponse — see NOTE above).
+    contractId: trade.deriv_contract_id,
     marketId: symbol,
     marketName: live.marketName || findMarket(symbol)?.name || symbol,
     contractType: "rise_fall",

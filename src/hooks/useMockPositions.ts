@@ -10,6 +10,9 @@ export type PositionContractType =
 
 export interface Position {
   id: string;
+  /** Deriv contract id — the correlation key for the positions WS stream.
+   *  Undefined for legacy/mock rows that predate real execution. */
+  contractId?: string;
   marketId: string;
   marketName: string;
   contractType: PositionContractType;

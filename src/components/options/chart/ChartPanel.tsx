@@ -10,7 +10,7 @@ import {
 import { useLiveMarket } from "@/stores/useLiveMarket";
 import { MarketPicker } from "../market/MarketPicker";
 import { ChartFooter } from "./ChartFooter";
-import { ChartTools } from "./ChartTools";
+import { ChartToolbar, ChartNavControls } from "./ChartToolbar";
 import { LiveChart, type LiveChartHandle } from "./LiveChart";
 import { MarketPill } from "./MarketPill";
 import { StatsStrip } from "./StatsStrip";
@@ -49,7 +49,13 @@ export function ChartPanel({
 }: ChartPanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // Chart type + interval are URL-driven (`?chart_type=…&interval=…`).
-  const { chartType, interval, setChartType, setInterval } = useChartSettings();
+  const { chartType, interval, tradeType, setChartType, setInterval } =
+    useChartSettings();
+  // Digit trade types restrict the chart interval to ticks (§4.2.2).
+  const tickOnly =
+    tradeType === "even_odd" ||
+    tradeType === "matches_differs" ||
+    tradeType === "over_under";
 
   // Latest streamed price + the session anchor for the change indicator.
   const [livePrice, setLivePrice] = useState<number | null>(null);
@@ -129,11 +135,12 @@ export function ChartPanel({
         )}
       </div>
 
-      {/* Chart body: [tools] [live canvas] */}
+      {/* Chart body: [toolbar] [live canvas] */}
       <div className="relative grid flex-1 min-h-0 min-w-0 grid-cols-[44px_1fr] gap-0 px-3 pt-2">
-        <ChartTools
+        <ChartToolbar
           chartType={chartType}
           interval={interval}
+          tickOnly={tickOnly}
           onChartTypeChange={setChartType}
           onIntervalChange={setInterval}
         />
@@ -145,6 +152,13 @@ export function ChartPanel({
           interval={interval}
           onPrice={handlePrice}
         />
+
+        {/* Floating lower-left chart navigation controls (§4.4) */}
+        <div className="pointer-events-none absolute bottom-4 left-[52px] z-10">
+          <div className="pointer-events-auto">
+            <ChartNavControls />
+          </div>
+        </div>
       </div>
 
       {/* TEMP: overlay simulation harness — remove once real trade execution
