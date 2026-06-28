@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
+import { AppsGridIcon } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
 import { AuthModal } from "../auth/AuthModal";
 import { ConnectDerivButton } from "../deriv/ConnectDerivButton";
+import { AnchoredPopover } from "../order/fields/AnchoredPopover";
 import { AccountSelector, type OptionsAccountMode } from "./AccountSelector";
 import { ContractTypeTabs } from "./ContractTypeTabs";
 import { DepositButton } from "./DepositButton";
+import { TradeTypesFlyout } from "./TradeTypesFlyout";
 import type { ContractTypeId } from "./contractTypes";
 
 interface TopBarProps {
@@ -44,9 +47,40 @@ export function TopBar({
   const status = useAuthStore((s) => s.status);
   const authed = status === "authenticated";
   const [authOpen, setAuthOpen] = useState(false);
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const gridRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="flex h-full items-center justify-between gap-3 px-4">
+    <div className="flex h-full items-center gap-2 px-4">
+      {/* Trade-types flyout trigger (§2 grid icon → §11 flyout) */}
+      <button
+        ref={gridRef}
+        type="button"
+        aria-label="Trade types"
+        aria-haspopup="dialog"
+        aria-expanded={flyoutOpen}
+        onClick={() => setFlyoutOpen((v) => !v)}
+        className={cn(
+          "grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors",
+          flyoutOpen
+            ? "bg-opt-bg-sunk text-opt-ink"
+            : "text-opt-ink-3 hover:bg-opt-bg-sunk hover:text-opt-ink",
+        )}
+      >
+        <AppsGridIcon className="h-[18px] w-[18px]" />
+      </button>
+      {flyoutOpen && (
+        <AnchoredPopover anchorRef={gridRef} onClose={() => setFlyoutOpen(false)}>
+          <TradeTypesFlyout
+            activeType={contractType}
+            onSelect={(id) => {
+              onContractTypeChange(id);
+              setFlyoutOpen(false);
+            }}
+          />
+        </AnchoredPopover>
+      )}
+
       {/* Trading methods — scroll independently, never push the right cluster */}
       <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <ContractTypeTabs value={contractType} onChange={onContractTypeChange} />
