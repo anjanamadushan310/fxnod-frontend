@@ -1,11 +1,18 @@
+import { Briefcase } from "lucide-react";
+
 /**
- * Quiet placeholder shown inside the PositionsDrawer when the user has no
- * open positions. Matches the Vela design: dashed border, centred message.
+ * Empty state inside the PositionsDrawer (Deriv §9): outlined briefcase glyph
+ * + message. `label` lets the Open / Closed tabs reuse it.
  */
-export function EmptyPositionsState() {
+export function EmptyPositionsState({
+  label = "You have no open positions.",
+}: {
+  label?: string;
+}) {
   return (
-    <div className="rounded-[10px] border border-dashed border-opt-line-strong px-3 py-5 text-center text-[12px] text-opt-ink-3">
-      No open positions. Place a trade to get started.
+    <div className="flex flex-col items-center gap-3 px-3 py-12 text-center">
+      <Briefcase className="h-10 w-10 text-opt-ink-4" strokeWidth={1.5} />
+      <p className="text-[13px] text-opt-ink-3">{label}</p>
     </div>
   );
 }

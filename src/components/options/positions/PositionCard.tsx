@@ -1,31 +1,34 @@
 "use client";
 
 import { memo } from "react";
+import { BarsIcon, ClockIcon, ExpandIcon } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
 import type { Position } from "@/hooks/useMockPositions";
 
 interface PositionCardProps {
   position: Position;
-  /** Optional: open the contract details modal. */
+  /** Optional: open the contract details page. */
   onOpenDetails?: (id: string) => void;
-  /** Optional: sell early (resale offered). */
+  /** Optional: sell early (resale offered). When absent → "Resale not offered". */
   onSell?: (id: string) => void;
 }
 
-const SIDE_DOT_COLOUR: Record<string, string> = {
-  rise: "var(--opt-rise)",
-  up: "var(--opt-rise)",
-  fall: "var(--opt-fall)",
-  down: "var(--opt-fall)",
-  accum: "#2563eb",
+/** side → human trade-type label shown on the card. */
+const SIDE_LABEL: Record<string, string> = {
+  rise: "Rise",
+  fall: "Fall",
+  up: "Up",
+  down: "Down",
+  accum: "Accumulator",
 };
 
 /**
- * Single open-position card.
+ * Open-position card (Deriv §8, Step 4): asset icon + name + expand, then the
+ * trade type / stake row, the timer / live-P&L row, and a resale slot
+ * ("Resale not offered" unless an `onSell` handler is provided).
  *
- * Memoised because the parent (PositionsDrawer) re-renders every tick due
- * to live P/L — but a card only needs to repaint when *its* row's data
- * changes. Reference-equal Position objects skip re-render.
+ * Memoised because the parent (PositionsDrawer) re-renders every P/L tick —
+ * a card only repaints when *its* Position reference changes.
  */
 function PositionCardInner({
   position,
@@ -33,88 +36,71 @@ function PositionCardInner({
   onSell,
 }: PositionCardProps) {
   const pnlPositive = position.pnl >= 0;
-  const status: "won" | "lost" | "open" = position.outcome ?? "open";
+  const tradeType = SIDE_LABEL[position.side] ?? position.contractType;
 
   return (
-    <article
-      data-status={status}
-      onClick={() => onOpenDetails?.(position.id)}
-      className={cn(
-        "grid cursor-pointer grid-cols-[auto_1fr_auto] items-start gap-2.5 rounded-[10px] border bg-opt-bg-elev px-3 py-2.5",
-        status === "open" && "border-opt-line hover:border-opt-line-strong",
-        status === "won" && "border-opt-rise/40 bg-opt-rise-soft",
-        status === "lost" && "border-opt-fall/30 bg-opt-fall-soft",
-      )}
-    >
-      <span
-        aria-hidden
-        className="mt-2 h-2 w-2 flex-shrink-0 rounded-full"
-        style={{ background: SIDE_DOT_COLOUR[position.side] ?? "var(--opt-ink-3)" }}
-      />
-
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex items-center gap-1.5 truncate text-[12.5px] font-semibold text-opt-ink">
-          <span className="truncate">{position.marketName}</span>
-          {position.status && (
-            <span className="font-mono text-[11px] font-medium text-opt-ink-3">
-              · {position.status}
-            </span>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] text-opt-ink-3">
-          <KV label="Stake" value={`${position.stake.toFixed(2)} USD`} />
-          <KV label="Contract value" value={`${position.contractValue.toFixed(2)} USD`} />
-          {position.entrySpot !== undefined && (
-            <KV label="Entry spot" value={position.entrySpot.toFixed(2)} />
-          )}
-          {position.barrier !== undefined && (
-            <KV label="Barrier" value={String(position.barrier)} />
-          )}
-          {position.takeProfit !== undefined && (
-            <KV
-              label="Take profit"
-              value={position.takeProfit === null ? "—" : `${position.takeProfit.toFixed(2)} USD`}
-            />
-          )}
-        </div>
+    <article className="flex flex-col gap-2 rounded-[10px] border border-opt-line bg-opt-bg-elev px-3 py-2.5">
+      {/* Asset icon + name + expand */}
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-md bg-opt-bg-sunk text-opt-ink-3"
+        >
+          <BarsIcon className="h-3.5 w-3.5" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-opt-ink">
+          {position.marketName}
+        </span>
+        <button
+          type="button"
+          aria-label="Contract details"
+          onClick={() => onOpenDetails?.(position.id)}
+          className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-md text-opt-ink-3 transition-colors hover:bg-opt-bg-sunk hover:text-opt-ink"
+        >
+          <ExpandIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <div className="flex flex-col items-end gap-1.5">
+      {/* Trade type + stake */}
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-opt-ink-2">{tradeType}</span>
+        <span className="font-mono font-medium tabular-nums text-opt-ink">
+          {position.stake.toFixed(2)} USD
+        </span>
+      </div>
+
+      {/* Timer/duration + live P&L */}
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="flex items-center gap-1 text-opt-ink-3">
+          <ClockIcon className="h-3.5 w-3.5" />
+          {position.status ?? "—"}
+        </span>
         <span
           className={cn(
-            "font-mono text-[13px] font-bold tabular-nums",
+            "font-mono font-bold tabular-nums",
             pnlPositive ? "text-opt-rise" : "text-opt-fall",
           )}
         >
           {pnlPositive ? "+" : ""}
           {position.pnl.toFixed(2)} USD
         </span>
-        {onSell && status === "open" && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSell(position.id);
-            }}
-            className={cn(
-              "rounded-md border border-opt-ink bg-opt-ink px-2.5 py-[3px] font-mono text-[11.5px] font-semibold tabular-nums text-opt-bg",
-              "transition-[filter] hover:brightness-110",
-            )}
-          >
-            Sell
-          </button>
-        )}
       </div>
-    </article>
-  );
-}
 
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-1 truncate">
-      <span className="font-sans">{label}:</span>
-      <span className="truncate font-medium text-opt-ink">{value}</span>
-    </div>
+      {/* Resale slot */}
+      {onSell ? (
+        <button
+          type="button"
+          onClick={() => onSell(position.id)}
+          className="rounded-md bg-opt-ink px-3 py-1.5 text-center font-mono text-[12px] font-semibold tabular-nums text-opt-bg transition-[filter] hover:brightness-110"
+        >
+          Sell {position.contractValue.toFixed(2)} USD
+        </button>
+      ) : (
+        <div className="rounded-md bg-opt-bg-sunk px-3 py-1.5 text-center text-[12px] text-opt-ink-4">
+          Resale not offered
+        </div>
+      )}
+    </article>
   );
 }
 
