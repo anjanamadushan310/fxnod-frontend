@@ -47,6 +47,11 @@ export function MarketRow({
       >
         {market.name}
       </span>
+      {market.closed && (
+        <span className="flex-shrink-0 rounded bg-[#FF4444] px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide text-white">
+          Closed
+        </span>
+      )}
       <FavStar on={isFavorite} onToggle={() => onToggleFavorite(market.id)} />
     </button>
   );

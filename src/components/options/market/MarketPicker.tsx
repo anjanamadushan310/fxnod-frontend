@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useFavoriteMarkets } from "@/hooks/useFavoriteMarkets";
 import { cn } from "@/lib/cn";
 import {
@@ -46,6 +47,8 @@ export function MarketPicker({
   );
   const { ids: favoriteIds, toggle, isFavorite: _isFav } = useFavoriteMarkets();
   void _isFav;
+  // Keystrokes stay instant; the filter pass runs once typing pauses.
+  const debouncedQuery = useDebouncedValue(query, 200);
 
   // Outside click + Escape.
   useEffect(() => {
@@ -75,16 +78,20 @@ export function MarketPicker({
   }, [onClose]);
 
   const groups = useMemo<TGroup[]>(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
 
     if (q) {
-      // Search mode: ignore category, build a synthetic "Search results" group.
-      const matches = ALL_MARKETS.filter((m) =>
-        m.name.toLowerCase().includes(q),
-      );
-      return matches.length
-        ? [{ id: "search", label: "Search results", marketIds: matches.map((m) => m.id) }]
-        : [];
+      // Search mode: filter across ALL categories, grouped under category
+      // headers (§5). Favorites isn't a real market category.
+      return CATEGORIES.filter((c) => c.id !== "favorites")
+        .map((cat) => ({
+          id: cat.id,
+          label: cat.label,
+          marketIds: ALL_MARKETS.filter(
+            (m) => m.category === cat.id && m.name.toLowerCase().includes(q),
+          ).map((m) => m.id),
+        }))
+        .filter((g) => g.marketIds.length > 0);
     }
 
     if (activeCat === "favorites") {
@@ -108,7 +115,7 @@ export function MarketPicker({
         }),
       }))
       .filter((g) => g.marketIds.length > 0);
-  }, [query, activeCat, activeSub, favoriteIds]);
+  }, [debouncedQuery, activeCat, activeSub, favoriteIds]);
 
   return (
     <div

@@ -41,6 +41,8 @@ export interface Market {
   category: MarketCategoryId;
   /** Optional sub-category for hierarchical placement. */
   subCategory?: MarketSubCategoryId;
+  /** Market is currently unavailable (shows a red "CLOSED" badge, §5). */
+  closed?: boolean;
 }
 
 // ─── Markets ────────────────────────────────────────────────────────────────
@@ -73,9 +75,9 @@ export const MARKETS: Record<string, Market> = {
   xau_usd: { id: "xau_usd", name: "Gold/USD",   seedPrice: 2348.50, category: "commodities" },
   xag_usd: { id: "xag_usd", name: "Silver/USD", seedPrice: 28.42,   category: "commodities" },
 
-  // Stock indices
-  spx: { id: "spx", name: "S&P 500", seedPrice: 5234.18, category: "stock_indices" },
-  ndx: { id: "ndx", name: "NASDAQ 100", seedPrice: 18421.7, category: "stock_indices" },
+  // Stock indices — closed outside exchange hours (demo CLOSED badge, §5).
+  spx: { id: "spx", name: "S&P 500", seedPrice: 5234.18, category: "stock_indices", closed: true },
+  ndx: { id: "ndx", name: "NASDAQ 100", seedPrice: 18421.7, category: "stock_indices", closed: true },
 };
 
 // ─── Categories with groupings ─────────────────────────────────────────────

@@ -78,13 +78,20 @@ export function MarketCategoryRail({
                 onSelect(cat.id);
               }}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left text-[13px] font-medium text-opt-ink-2",
+                "relative flex w-full items-center gap-2.5 rounded-lg border-0 bg-transparent px-2.5 py-2 text-left text-[13px] font-medium text-opt-ink-2",
                 "transition-colors hover:bg-black/[0.04] hover:text-opt-ink",
                 "dark:hover:bg-white/[0.04]",
                 isActive &&
                   "bg-opt-bg-elev text-opt-ink shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_var(--opt-line)]",
               )}
             >
+              {/* §5: active category gets a red left-border indicator. */}
+              {isActive && (
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-[#FF4444]"
+                />
+              )}
               <span
                 className={cn(
                   "h-[18px] w-[18px] flex-shrink-0",
