@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CaretDownIcon } from "@/components/ui/Icons";
+import { useContractDetails } from "@/stores/useContractDetails";
 import { useSimPositions } from "@/stores/useSimPositions";
 import { cn } from "@/lib/cn";
+import { ClosedPositionCard } from "./ClosedPositionCard";
+import {
+  MOCK_CLOSED_CONTRACTS,
+  formatContractDate,
+  simPositionToDetail,
+  type ContractDetail,
+} from "./contractDetail";
 import { EmptyPositionsState } from "./EmptyPositionsState";
 import { PositionCard } from "./PositionCard";
 
@@ -12,24 +21,27 @@ interface PositionsDrawerProps {
 }
 
 /**
- * Slide-in drawer on the LEFT of the main column (next to the icon
- * sidebar) showing all open positions + a P/L summary footer.
- *
- * Owns its own `useMockPositions` subscription so neither the chart nor
- * the order panel re-renders on P/L ticks.
+ * Positions drawer (Deriv §8–10). Open tab = live sim positions; Closed tab =
+ * date-grouped closed contracts with an "All time" date filter. Stays mounted
+ * for the slide animation — the OptionsShell column width clips it when closed.
  */
 export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
   const [tab, setTab] = useState<"open" | "closed">("open");
 
   const positions = useSimPositions((s) => s.positions);
   const tick = useSimPositions((s) => s.tick);
-  const totalPnl = useMemo(
+  const openDetail = useContractDetails((s) => s.open);
+
+  const openTotal = useMemo(
     () => positions.reduce((acc, p) => acc + p.pnl, 0),
     [positions],
   );
+  const closedTotal = useMemo(
+    () => MOCK_CLOSED_CONTRACTS.reduce((acc, c) => acc + c.pnl, 0),
+    [],
+  );
 
-  // Escape closes; drift P/L while open. (Drawer stays mounted for the slide
-  // animation — the OptionsShell column width clips it when closed.)
+  // Escape closes; drift P/L while open.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -43,9 +55,9 @@ export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
     };
   }, [open, onClose, tick]);
 
-  // Closed positions aren't wired yet (§10) — empty for now.
-  const list = tab === "open" ? positions : [];
-  const footerPnl = tab === "open" ? totalPnl : 0;
+  const footerCount =
+    tab === "open" ? positions.length : MOCK_CLOSED_CONTRACTS.length;
+  const footerPnl = tab === "open" ? openTotal : closedTotal;
   const footerPositive = footerPnl >= 0;
 
   return (
@@ -75,26 +87,28 @@ export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3">
-        {list.length === 0 ? (
-          <EmptyPositionsState
-            label={
-              tab === "open"
-                ? "You have no open positions."
-                : "You have no closed positions."
-            }
-          />
+        {tab === "open" ? (
+          positions.length === 0 ? (
+            <EmptyPositionsState label="You have no open positions." />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {positions.map((p) => (
+                <PositionCard
+                  key={p.id}
+                  position={p}
+                  onOpenDetails={() => openDetail(simPositionToDetail(p))}
+                />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="flex flex-col gap-2">
-            {list.map((p) => (
-              <PositionCard key={p.id} position={p} />
-            ))}
-          </div>
+          <ClosedTab onOpenDetails={openDetail} />
         )}
       </div>
 
       <footer className="flex items-center justify-between border-t border-opt-line px-3 py-2.5 text-[12px]">
         <span className="text-opt-ink-3">
-          {list.length} {tab} position{list.length === 1 ? "" : "s"}
+          {footerCount} {tab} position{footerCount === 1 ? "" : "s"}
         </span>
         <span
           className={cn(
@@ -106,6 +120,129 @@ export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
           {footerPnl.toFixed(2)} USD
         </span>
       </footer>
+    </div>
+  );
+}
+
+// ─── Closed tab ──────────────────────────────────────────────────────────────
+
+type FilterKey = "all" | "today" | "7d" | "30d";
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+];
+
+function ClosedTab({
+  onOpenDetails,
+}: {
+  onOpenDetails: (c: ContractDetail) => void;
+}) {
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const nowRef = useRef<number>(0);
+
+  const contracts = useMemo(() => {
+    if (filter === "all") return MOCK_CLOSED_CONTRACTS;
+    // Capture "now" lazily so the default ("all") render is SSR-deterministic.
+    if (!nowRef.current) nowRef.current = Math.floor(Date.now() / 1000);
+    const win =
+      filter === "today" ? 86400 : filter === "7d" ? 7 * 86400 : 30 * 86400;
+    return MOCK_CLOSED_CONTRACTS.filter(
+      (c) => nowRef.current - c.exitTime <= win,
+    );
+  }, [filter]);
+
+  const groups = useMemo(() => {
+    const m = new Map<string, ContractDetail[]>();
+    for (const c of contracts) {
+      const k = formatContractDate(c.exitTime);
+      const arr = m.get(k);
+      if (arr) arr.push(c);
+      else m.set(k, [c]);
+    }
+    return [...m.entries()];
+  }, [contracts]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <FilterDropdown value={filter} onChange={setFilter} />
+      {contracts.length === 0 ? (
+        <EmptyPositionsState label="No closed positions in this range." />
+      ) : (
+        groups.map(([date, items]) => (
+          <div key={date} className="flex flex-col gap-2">
+            <p className="px-1 text-[12px] font-semibold text-opt-ink-3">
+              {date}
+            </p>
+            {items.map((c) => (
+              <ClosedPositionCard
+                key={c.id}
+                contract={c}
+                onOpenDetails={onOpenDetails}
+              />
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function FilterDropdown({
+  value,
+  onChange,
+}: {
+  value: FilterKey;
+  onChange: (k: FilterKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const label = FILTERS.find((f) => f.key === value)?.label ?? "All time";
+
+  return (
+    <div ref={ref} className="relative w-fit">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 rounded-md bg-opt-bg-sunk px-2.5 py-1 text-[12px] font-medium text-opt-ink-2 transition-colors hover:text-opt-ink"
+      >
+        {label}
+        <CaretDownIcon className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+4px)] z-10 w-[150px] overflow-hidden rounded-lg border border-opt-line bg-opt-bg-elev py-1 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => {
+                onChange(f.key);
+                setOpen(false);
+              }}
+              className={cn(
+                "block w-full px-3 py-1.5 text-left text-[12px] transition-colors",
+                f.key === value
+                  ? "font-semibold text-opt-ink"
+                  : "text-opt-ink-2 hover:bg-opt-bg-sunk hover:text-opt-ink",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

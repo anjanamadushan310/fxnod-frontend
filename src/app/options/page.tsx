@@ -11,6 +11,7 @@ import { findMarket } from "@/components/options/market/catalog";
 import { useChartSettings } from "@/hooks/useChartSettings";
 import { OrderPanel } from "@/components/options/order/OrderPanel";
 import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer";
+import { ContractDetailsModal } from "@/components/options/positions/ContractDetailsModal";
 import { usePositionsUI } from "@/stores/usePositionsUI";
 import { useSimPositions } from "@/stores/useSimPositions";
 import type { OptionsAccountMode } from "@/components/options/layout/AccountSelector";
@@ -120,6 +121,8 @@ function OptionsPageInner() {
         }
         order={<OrderPanel contractType={tradeType} symbol={market.id} />}
       />
+      {/* Contract Details modal — self-portals into the options subtree (§10) */}
+      <ContractDetailsModal />
     </>
   );
 }
