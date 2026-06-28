@@ -11,6 +11,8 @@ import { findMarket } from "@/components/options/market/catalog";
 import { useChartSettings } from "@/hooks/useChartSettings";
 import { OrderPanel } from "@/components/options/order/OrderPanel";
 import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer";
+import { usePositionsUI } from "@/stores/usePositionsUI";
+import { useSimPositions } from "@/stores/useSimPositions";
 import type { OptionsAccountMode } from "@/components/options/layout/AccountSelector";
 
 /**
@@ -62,7 +64,12 @@ function OptionsPageInner() {
   }, [searchParams, router]);
 
   const [accountMode, _setAccountMode] = useState<OptionsAccountMode>("demo");
-  const [positionsOpen, setPositionsOpen] = useState(false);
+
+  // Drawer open state is a store (a buy can open it from the order panel).
+  const positionsOpen = usePositionsUI((s) => s.open);
+  const togglePositions = usePositionsUI((s) => s.toggle);
+  const setPositionsOpen = usePositionsUI((s) => s.setOpen);
+  const positionsCount = useSimPositions((s) => s.positions.length);
 
   // Market + contract type are URL-driven (`?symbol=`, `?trade_type=`),
   // alongside chart_type + interval. No local state for either.
@@ -78,13 +85,20 @@ function OptionsPageInner() {
   return (
     <>
       <OptionsShell
+        drawerOpen={positionsOpen}
+        drawer={
+          <PositionsDrawer
+            open={positionsOpen}
+            onClose={() => setPositionsOpen(false)}
+          />
+        }
         sidebar={
           <IconSidebar
             brandInitials="DT"
             theme="light"
             positionsOpen={positionsOpen}
-            onPositionsToggle={() => setPositionsOpen((v) => !v)}
-            positionsBadge={1}
+            onPositionsToggle={togglePositions}
+            positionsBadge={positionsCount || undefined}
           />
         }
         topbar={
@@ -105,11 +119,6 @@ function OptionsPageInner() {
           />
         }
         order={<OrderPanel contractType={tradeType} symbol={market.id} />}
-      />
-      {/* Positions drawer slides over from the icon sidebar's right edge */}
-      <PositionsDrawer
-        open={positionsOpen}
-        onClose={() => setPositionsOpen(false)}
       />
     </>
   );

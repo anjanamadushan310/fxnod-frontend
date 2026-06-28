@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMockPositions } from "@/hooks/useMockPositions";
+import { useSimPositions } from "@/stores/useSimPositions";
 import { cn } from "@/lib/cn";
 import { EmptyPositionsState } from "./EmptyPositionsState";
 import { PositionCard } from "./PositionCard";
@@ -21,23 +21,27 @@ interface PositionsDrawerProps {
 export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
   const [tab, setTab] = useState<"open" | "closed">("open");
 
-  // Escape closes.
+  const positions = useSimPositions((s) => s.positions);
+  const tick = useSimPositions((s) => s.tick);
+  const totalPnl = useMemo(
+    () => positions.reduce((acc, p) => acc + p.pnl, 0),
+    [positions],
+  );
+
+  // Escape closes; drift P/L while open. (Drawer stays mounted for the slide
+  // animation — the OptionsShell column width clips it when closed.)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  const positions = useMockPositions();
-  const totalPnl = useMemo(
-    () => positions.reduce((acc, p) => acc + p.pnl, 0),
-    [positions],
-  );
-
-  if (!open) return null;
+    const id = setInterval(tick, 1500);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      clearInterval(id);
+    };
+  }, [open, onClose, tick]);
 
   // Closed positions aren't wired yet (§10) — empty for now.
   const list = tab === "open" ? positions : [];
@@ -45,13 +49,7 @@ export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
   const footerPositive = footerPnl >= 0;
 
   return (
-    <div
-      className={cn(
-        "absolute left-[76px] top-[64px] z-20 flex h-[calc(100vh-64px)] w-[360px] flex-col",
-        "border-r border-opt-line bg-opt-bg-elev",
-        "shadow-[6px_0_20px_rgba(0,0,0,0.06)]",
-      )}
-    >
+    <div className="flex h-full w-[360px] flex-col border-r border-opt-line bg-opt-bg-elev">
       <header className="flex items-center justify-between border-b border-opt-line px-3 py-3">
         <h2 className="m-0 font-sans text-[14px] font-semibold text-opt-ink">
           Positions

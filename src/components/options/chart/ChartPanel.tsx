@@ -7,6 +7,7 @@ import {
   useTradeOverlays,
   type OverlayContractType,
 } from "@/stores/useTradeOverlays";
+import { useLiveMarket } from "@/stores/useLiveMarket";
 import { MarketPicker } from "../market/MarketPicker";
 import { ChartFooter } from "./ChartFooter";
 import { ChartTools } from "./ChartTools";
@@ -88,11 +89,16 @@ export function ChartPanel({
   useEffect(() => {
     setLivePrice(null);
     anchorRef.current = null;
-  }, [marketId]);
+    // Publish the on-screen market id/name so the buy handler can anchor a
+    // simulated barrier/position to it.
+    useLiveMarket.getState().set({ symbol: marketId, marketName });
+  }, [marketId, marketName]);
 
   const handlePrice = useCallback((price: number) => {
     if (anchorRef.current === null) anchorRef.current = price;
     setLivePrice(price);
+    // Publish the latest price (read imperatively by the buy handler).
+    useLiveMarket.getState().set({ price });
   }, []);
 
   const price = livePrice ?? seedPrice;

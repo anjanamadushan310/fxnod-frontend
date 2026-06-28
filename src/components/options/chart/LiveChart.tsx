@@ -138,9 +138,11 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
       chartRef.current = chart;
 
       // Keep the canvas matched to its flex container (mandated ResizeObserver).
+      // Fires every frame while the drawer-compress grid transition runs, so
+      // chart.resize() keeps the canvas in lock-step with the shrinking column.
       const ro = new ResizeObserver((entries) => {
         const { width, height } = entries[0]!.contentRect;
-        chart.applyOptions({ width, height });
+        if (width > 0 && height > 0) chart.resize(width, height);
       });
       ro.observe(el);
 

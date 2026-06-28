@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { usePlaceTrade } from "@/services/api/endpoints/trading/trading";
+import { findMarket } from "@/components/options/market/catalog";
+import { useLiveMarket } from "@/stores/useLiveMarket";
+import { usePositionsUI } from "@/stores/usePositionsUI";
+import { useSimPositions } from "@/stores/useSimPositions";
+import { useTradeOverlays } from "@/stores/useTradeOverlays";
 import { useDerivStatus } from "./useDerivStatus";
 import { useProposal } from "./useProposal";
 import type { ConfirmResponse, ProposalRequest } from "@/services/tradingApi";
@@ -36,7 +41,7 @@ export interface PanelBuyResult {
  */
 export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
   const [lastTrade, setLastTrade] = useState<ConfirmResponse | null>(null);
-  const { linked, isLoading: linkLoading } = useDerivStatus();
+  const { linked } = useDerivStatus();
 
   const isIdle = lastTrade === null;
 
@@ -69,7 +74,10 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
       ? "buying"
       : "idle";
 
-  const canBuy = !!proposal && !quoting && isIdle && linked && !pending;
+  // TEMP (sim phase): relaxed so the simulated buy flow is testable without a
+  // linked account / live quote. Restore `!!proposal && !quoting && linked`
+  // once the real position lifecycle is wired from the Go backend.
+  const canBuy = request !== null && isIdle && !pending;
 
   const payoutLabel = quoting
     ? "Fetching payout…"
@@ -77,23 +85,16 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
       ? `Payout  ${Number(proposal.payout_amount).toFixed(2)} ${proposal.currency}`
       : null;
 
-  // Show the link gate once the status query has resolved as "not linked".
-  const gateMsg =
-    !linkLoading && !linked
-      ? "Connect your Deriv account to place trades."
-      : null;
   const errorMsg =
-    gateMsg ??
-    (placeTrade.error ? detailOf(placeTrade.error) : null) ??
-    quoteError;
+    (placeTrade.error ? detailOf(placeTrade.error) : null) ?? quoteError;
 
   function handleBuy() {
     if (!request) return;
-    if (!linked) {
-      toast.error("Connect your Deriv account to place trades.");
-      return;
-    }
-    placeTrade.mutate({ data: request });
+    // TEMP: simulate the full visual flow (drawer + position + chart overlay)
+    // so we can validate placing a trade before backend order-execution WS.
+    simulateTradeFlow(request);
+    // Real single-shot execution still fires when a quote + linked account exist.
+    if (linked && proposal) placeTrade.mutate({ data: request });
   }
 
   function handleNewTrade() {
@@ -110,6 +111,45 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
     handleBuy,
     handleNewTrade,
   };
+}
+
+/**
+ * TEMPORARY front-end simulation of a placed trade, for validating the visual
+ * flow before the backend pushes the real position lifecycle:
+ *   a) auto-open the Positions drawer,
+ *   b) append a dummy open position,
+ *   c) draw a barrier price line + entry/exit markers at the live price/time.
+ */
+function simulateTradeFlow(request: ProposalRequest) {
+  const live = useLiveMarket.getState();
+  const symbol = request.symbol;
+  const side = request.side === "fall" ? "fall" : "rise";
+  const stake = Number(request.stake) || 0;
+  const price = live.price ?? 0;
+  const now = Math.floor(Date.now() / 1000);
+
+  usePositionsUI.getState().setOpen(true);
+
+  useSimPositions.getState().add({
+    marketId: symbol,
+    marketName: live.marketName || findMarket(symbol)?.name || symbol,
+    contractType: "rise_fall",
+    side,
+    status: "5 ticks",
+    stake,
+    contractValue: stake,
+    entrySpot: price || undefined,
+  });
+
+  if (price > 0) {
+    useTradeOverlays.getState().addOverlay({
+      symbol,
+      contractType: side,
+      strikePrice: price,
+      startTime: now,
+      endTime: now + 5,
+    });
+  }
 }
 
 /** Pull the backend's human-readable `detail` off an axios error, if present. */
