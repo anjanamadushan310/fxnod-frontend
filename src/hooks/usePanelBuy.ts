@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { usePlaceTrade } from "@/services/api/endpoints/trading/trading";
 import { findMarket } from "@/components/options/market/catalog";
 import { useLiveMarket } from "@/stores/useLiveMarket";
+import { useOpenPositions } from "@/stores/useOpenPositions";
 import { usePositionsUI } from "@/stores/usePositionsUI";
-import { useSimPositions } from "@/stores/useSimPositions";
 import { useTradeOverlays } from "@/stores/useTradeOverlays";
 import { useDerivStatus } from "./useDerivStatus";
 import { useProposal } from "./useProposal";
@@ -17,7 +17,7 @@ export type BuyPhase = "idle" | "buying" | "confirmed";
 export interface PanelBuyResult {
   buyPhase: BuyPhase;
   lastTrade: ConfirmResponse | null;
-  /** True when a quote is ready, the account is linked, and not mid-buy. */
+  /** True when the account is linked and not mid-buy. */
   canBuy: boolean;
   /** Sub-text for BuyButton — "Fetching payout…" while quoting, real value once ready, null when disabled. */
   payoutLabel: string | null;
@@ -30,22 +30,27 @@ export interface PanelBuyResult {
 /**
  * Shared buy-state machine for all 10 order panels.
  *
- * Execution is the single-shot `usePlaceTrade` mutation (POST
- * /api/v1/orders/trade — proposal + immediate buy in one call). The separate
- * `useProposal` quote stays only to show the live payout estimate on the
- * button; it no longer performs the buy.
+ * Execution is the single-phase `usePlaceTrade` mutation (POST
+ * /api/v1/orders/trade) — the payload is built from the current UI state
+ * (symbol / stake / duration / contract type). The separate `useProposal`
+ * quote stays only to show the live payout estimate on the button.
  *
- * Gating: the buy is disabled until the user has linked a Deriv account
- * (see `useDerivStatus`). The frontend never calls Deriv to trade — the order
- * flows through OUR Go backend.
+ * Gating: Buy is disabled until the user has a linked Deriv account (the
+ * status query is itself authenticated, so this also requires a session). On
+ * success we open the Positions drawer, insert the real position, and draw
+ * the barrier/entry overlay (see `applyPostTrade`).
  */
 export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
   const [lastTrade, setLastTrade] = useState<ConfirmResponse | null>(null);
-  const { linked } = useDerivStatus();
+  const { linked, isLoading: linkLoading } = useDerivStatus();
 
   const isIdle = lastTrade === null;
 
-  // Quote is for display only now (single-shot trade re-quotes server-side).
+  // Always-current request for the async success handler (avoid stale closure).
+  const requestRef = useRef(request);
+  requestRef.current = request;
+
+  // Quote is for display only (single-phase trade re-quotes server-side).
   const { proposal, loading: quoting, error: quoteError } = useProposal(
     request,
     { enabled: isIdle },
@@ -58,6 +63,7 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
         toast.success("Trade placed", {
           description: `Buy ${trade.buy_price} · payout ${trade.payout_amount} · #${trade.trade_id}`,
         });
+        if (requestRef.current) applyPostTrade(requestRef.current, trade);
       },
       onError: (e) => {
         toast.error("Trade failed", {
@@ -74,10 +80,8 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
       ? "buying"
       : "idle";
 
-  // TEMP (sim phase): relaxed so the simulated buy flow is testable without a
-  // linked account / live quote. Restore `!!proposal && !quoting && linked`
-  // once the real position lifecycle is wired from the Go backend.
-  const canBuy = request !== null && isIdle && !pending;
+  // Strictly require a linked (→ authenticated) account.
+  const canBuy = request !== null && isIdle && linked && !pending;
 
   const payoutLabel = quoting
     ? "Fetching payout…"
@@ -85,16 +89,22 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
       ? `Payout  ${Number(proposal.payout_amount).toFixed(2)} ${proposal.currency}`
       : null;
 
+  const gateMsg =
+    !linkLoading && !linked
+      ? "Connect your Deriv account to place trades."
+      : null;
   const errorMsg =
-    (placeTrade.error ? detailOf(placeTrade.error) : null) ?? quoteError;
+    gateMsg ??
+    (placeTrade.error ? detailOf(placeTrade.error) : null) ??
+    quoteError;
 
   function handleBuy() {
     if (!request) return;
-    // TEMP: simulate the full visual flow (drawer + position + chart overlay)
-    // so we can validate placing a trade before backend order-execution WS.
-    simulateTradeFlow(request);
-    // Real single-shot execution still fires when a quote + linked account exist.
-    if (linked && proposal) placeTrade.mutate({ data: request });
+    if (!linked) {
+      toast.error("Connect your Deriv account to place trades.");
+      return;
+    }
+    placeTrade.mutate({ data: request });
   }
 
   function handleNewTrade() {
@@ -114,41 +124,74 @@ export function usePanelBuy(request: ProposalRequest | null): PanelBuyResult {
 }
 
 /**
- * TEMPORARY front-end simulation of a placed trade, for validating the visual
- * flow before the backend pushes the real position lifecycle:
- *   a) auto-open the Positions drawer,
- *   b) append a dummy open position,
- *   c) draw a barrier price line + entry/exit markers at the live price/time.
+ * Post-trade plumbing on a successful single-phase buy (§3): open the drawer,
+ * insert the real position, and draw the barrier line + entry marker.
+ *
+ * NOTE: `ConfirmResponse` returns trade_id / buy_price / payout but NOT the
+ * entry spot, barrier, or timestamps — so the chart anchors to the live price
+ * captured at execution + `now`. Swap these for the response fields the moment
+ * the backend includes them.
  */
-function simulateTradeFlow(request: ProposalRequest) {
+function applyPostTrade(request: ProposalRequest, trade: ConfirmResponse) {
   const live = useLiveMarket.getState();
   const symbol = request.symbol;
   const side = request.side === "fall" ? "fall" : "rise";
-  const stake = Number(request.stake) || 0;
-  const price = live.price ?? 0;
+  const stake = Number(request.stake) || Number(trade.buy_price) || 0;
+  const entry = live.price ?? 0;
   const now = Math.floor(Date.now() / 1000);
 
   usePositionsUI.getState().setOpen(true);
 
-  useSimPositions.getState().add({
+  useOpenPositions.getState().add({
     marketId: symbol,
     marketName: live.marketName || findMarket(symbol)?.name || symbol,
     contractType: "rise_fall",
     side,
-    status: "5 ticks",
+    status: durationLabel(request),
     stake,
-    contractValue: stake,
-    entrySpot: price || undefined,
+    contractValue: Number(trade.buy_price) || stake,
+    entrySpot: entry || undefined,
   });
 
-  if (price > 0) {
+  if (entry > 0) {
     useTradeOverlays.getState().addOverlay({
       symbol,
       contractType: side,
-      strikePrice: price,
+      strikePrice: entry,
       startTime: now,
-      endTime: now + 5,
+      endTime: now + durationSeconds(request),
     });
+  }
+}
+
+const UNIT_LABEL: Record<string, [string, string]> = {
+  t: ["tick", "ticks"],
+  s: ["sec", "secs"],
+  m: ["min", "mins"],
+  h: ["hour", "hours"],
+  d: ["day", "days"],
+};
+
+function durationLabel(req: ProposalRequest): string {
+  const n = req.duration;
+  if (n == null) return "—";
+  const [sg, pl] = UNIT_LABEL[req.duration_unit ?? "t"] ?? UNIT_LABEL.t!;
+  return `${n} ${n === 1 ? sg : pl}`;
+}
+
+function durationSeconds(req: ProposalRequest): number {
+  const n = req.duration ?? 5;
+  switch (req.duration_unit) {
+    case "s":
+      return n;
+    case "m":
+      return n * 60;
+    case "h":
+      return n * 3600;
+    case "d":
+      return n * 86400;
+    default:
+      return n; // ticks ≈ 1s for 1s indices
   }
 }
 

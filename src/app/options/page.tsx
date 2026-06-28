@@ -13,7 +13,7 @@ import { OrderPanel } from "@/components/options/order/OrderPanel";
 import { PositionsDrawer } from "@/components/options/positions/PositionsDrawer";
 import { ContractDetailsModal } from "@/components/options/positions/ContractDetailsModal";
 import { usePositionsUI } from "@/stores/usePositionsUI";
-import { useSimPositions } from "@/stores/useSimPositions";
+import { useOpenPositions } from "@/stores/useOpenPositions";
 import type { OptionsAccountMode } from "@/components/options/layout/AccountSelector";
 
 /**
@@ -70,7 +70,7 @@ function OptionsPageInner() {
   const positionsOpen = usePositionsUI((s) => s.open);
   const togglePositions = usePositionsUI((s) => s.toggle);
   const setPositionsOpen = usePositionsUI((s) => s.setOpen);
-  const positionsCount = useSimPositions((s) => s.positions.length);
+  const positionsCount = useOpenPositions((s) => s.positions.length);
 
   // Market + contract type are URL-driven (`?symbol=`, `?trade_type=`),
   // alongside chart_type + interval. No local state for either.

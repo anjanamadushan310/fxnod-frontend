@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretDownIcon } from "@/components/ui/Icons";
 import { useContractDetails } from "@/stores/useContractDetails";
-import { useSimPositions } from "@/stores/useSimPositions";
+import { useOpenPositions } from "@/stores/useOpenPositions";
 import { cn } from "@/lib/cn";
 import { ClosedPositionCard } from "./ClosedPositionCard";
 import {
@@ -28,8 +28,8 @@ interface PositionsDrawerProps {
 export function PositionsDrawer({ open, onClose }: PositionsDrawerProps) {
   const [tab, setTab] = useState<"open" | "closed">("open");
 
-  const positions = useSimPositions((s) => s.positions);
-  const tick = useSimPositions((s) => s.tick);
+  const positions = useOpenPositions((s) => s.positions);
+  const tick = useOpenPositions((s) => s.tick);
   const openDetail = useContractDetails((s) => s.open);
 
   const openTotal = useMemo(
