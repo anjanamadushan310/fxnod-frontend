@@ -9,37 +9,50 @@ interface LastDigitGridProps {
   onChange: (digit: number) => void;
   /** Live frequency per digit (length 10). */
   percentages: number[];
+  /** Digits that can't be picked (Over/Under §6.9 — 9 for Over, 0 for Under). */
+  disabledDigits?: number[];
 }
 
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 /**
- * "Last digit prediction" selector for Matches/Differs. A 0–9 grid; the
- * chosen digit is filled dark, each cell shows its live frequency below.
+ * "Last digit prediction" selector for Matches/Differs & Over/Under. A 0–9
+ * grid; the chosen digit is filled dark, each cell shows its live frequency
+ * below. Over/Under gray out one unreachable digit.
  *
- * The lowest-frequency digit's percentage is tinted to hint at the longest-
- * odds pick (matches the Deriv reference).
+ * The lowest-frequency (enabled) digit's percentage is tinted to hint at the
+ * longest-odds pick (matches the Deriv reference).
  */
 export function LastDigitGrid({
   value,
   onChange,
   percentages,
+  disabledDigits = [],
 }: LastDigitGridProps) {
-  const min = Math.min(...percentages);
+  const min = Math.min(
+    ...DIGITS.filter((d) => !disabledDigits.includes(d)).map(
+      (d) => percentages[d] ?? Infinity,
+    ),
+  );
 
   return (
     <Field label="Last digit prediction">
       <div className="grid w-full grid-cols-5 gap-x-2 gap-y-2.5 pt-1">
         {DIGITS.map((d) => {
-          const selected = d === value;
+          const disabled = disabledDigits.includes(d);
+          const selected = d === value && !disabled;
           const pct = percentages[d] ?? 0;
-          const isMin = pct === min;
+          const isMin = !disabled && pct === min;
           return (
             <button
               key={d}
               type="button"
+              disabled={disabled}
               onClick={() => onChange(d)}
-              className="flex flex-col items-center gap-1"
+              className={cn(
+                "flex flex-col items-center gap-1",
+                disabled && "cursor-not-allowed opacity-40",
+              )}
             >
               <span
                 className={cn(
@@ -47,7 +60,9 @@ export function LastDigitGrid({
                   "transition-colors duration-150",
                   selected
                     ? "bg-opt-ink text-opt-bg"
-                    : "text-opt-ink hover:bg-opt-bg-sunk",
+                    : disabled
+                      ? "text-opt-ink-3"
+                      : "text-opt-ink hover:bg-opt-bg-sunk",
                 )}
               >
                 {d}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePanelBuy } from "@/hooks/usePanelBuy";
 import { useDigitStats } from "@/hooks/useDigitStats";
 import { buildProposalRequest } from "../buildProposalRequest";
@@ -17,11 +17,19 @@ interface OverUnderPanelProps {
 }
 
 export function OverUnderPanel({ symbol }: OverUnderPanelProps) {
+  // side "rise" = Over (can't be over 9), "fall" = Under (can't be under 0).
   const [side, setSide] = useState<Side>("rise");
-  const [digit, setDigit] = useState<number>(0);
+  const [digit, setDigit] = useState<number>(5);
   const [duration, setDuration] = useState<DurationValue>({ amount: 5, unit: "ticks" });
   const [stake, setStake] = useState<number>(10);
   const stats = useDigitStats();
+
+  const disabledDigits = side === "rise" ? [9] : [0];
+  // Keep the pick valid when the direction flips onto a disabled digit.
+  useEffect(() => {
+    if (side === "rise" && digit === 9) setDigit(8);
+    if (side === "fall" && digit === 0) setDigit(1);
+  }, [side, digit]);
 
   const request =
     stake > 0
@@ -50,7 +58,12 @@ export function OverUnderPanel({ symbol }: OverUnderPanelProps) {
         onChange={setSide}
         labels={{ rise: "Over", fall: "Under" }}
       />
-      <LastDigitGrid value={digit} onChange={setDigit} percentages={stats} />
+      <LastDigitGrid
+        value={digit}
+        onChange={setDigit}
+        percentages={stats}
+        disabledDigits={disabledDigits}
+      />
       <DurationField value={duration} onChange={setDuration} />
       <StakeField value={stake} onChange={setStake} min={1} max={2000} />
       {errorMsg && (
