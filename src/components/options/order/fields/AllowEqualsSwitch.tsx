@@ -25,10 +25,12 @@ export function AllowEqualsSwitch({ label, value, onChange }: SwitchRowProps) {
         aria-checked={value}
         aria-label={label}
         onClick={() => onChange(!value)}
+        style={value ? { backgroundColor: "#00A79E" } : undefined}
         className={cn(
           "relative h-[20px] w-[36px] flex-shrink-0 rounded-full border-0 p-0",
           "transition-colors duration-150",
-          value ? "bg-opt-rise" : "bg-opt-line-strong",
+          // Deriv §12: active toggle = teal #00A79E.
+          value ? "" : "bg-opt-line-strong",
         )}
       >
         <span

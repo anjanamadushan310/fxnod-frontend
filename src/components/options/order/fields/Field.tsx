@@ -13,6 +13,8 @@ interface FieldProps {
   children: ReactNode;
   /** Make the field appear disabled / read-only. */
   disabled?: boolean;
+  /** Force the teal focus highlight (e.g. while its picker overlay is open). */
+  active?: boolean;
 }
 
 /**
@@ -32,13 +34,16 @@ export function Field({
   trailing,
   children,
   disabled,
+  active,
 }: FieldProps) {
   return (
     <div
       className={cn(
-        "rounded-[10px] border border-opt-line bg-opt-bg-elev px-3 py-2.5",
-        "transition-colors hover:border-opt-line-strong",
-        "focus-within:border-opt-ink",
+        // Deriv §12: light-gray field fill (#F4F4F4 ≈ --opt-bg-sunk), gray
+        // border (#E8E8E8 ≈ --opt-line), teal focus highlight (#00A79E).
+        "rounded-[10px] border bg-opt-bg-sunk px-3 py-2.5",
+        "transition-colors hover:border-opt-line-strong focus-within:border-[#00A79E]",
+        active ? "border-[#00A79E]" : "border-opt-line",
         disabled && "opacity-50 pointer-events-none",
       )}
     >

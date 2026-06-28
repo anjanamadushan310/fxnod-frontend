@@ -1,106 +1,78 @@
 "use client";
 
-import { MinusIcon, PlusIcon } from "@/components/ui/Icons";
-import { cn } from "@/lib/cn";
+import { useRef, useState } from "react";
+import { CaretDownIcon } from "@/components/ui/Icons";
+import { AnchoredPopover } from "./AnchoredPopover";
 import { Field } from "./Field";
+import { StakePicker } from "./StakePicker";
 
 interface StakeFieldProps {
   value: number;
   currency?: string;
-  /** Optional min/max display in the hint row. */
+  /** Min/max — shown in the hint row and enforced by the picker. */
   min?: number;
   max?: number;
-  /** Show the -/+ stepper buttons on the right. */
-  withSteppers?: boolean;
-  /** Step size when steppers are clicked. */
-  step?: number;
   onChange: (next: number) => void;
 }
 
 /**
- * Numeric stake input with optional currency suffix and ±step buttons.
+ * Stake field — shows the current stake and opens a floating
+ * {@link StakePicker} (quick-grid + keyboard entry) on click (Deriv §6.1).
+ * Takes the teal focus highlight while its picker is open.
  *
- * NOTE: re-renders only on its own value change. ChartPanel's tick storm
- * does NOT touch this — it lives in the OrderPanel subtree.
+ * NOTE: re-renders only on its own value change. ChartPanel's tick storm does
+ * NOT touch this — it lives in the OrderPanel subtree.
  */
 export function StakeField({
   value,
   currency = "USD",
   min,
   max,
-  withSteppers = true,
-  step = 1,
   onChange,
 }: StakeFieldProps) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
   const hint =
     min !== undefined && max !== undefined
       ? `min ${min} · max ${max.toLocaleString()}`
       : undefined;
 
-  const setNumeric = (raw: string) => {
-    const n = Number(raw);
-    if (Number.isFinite(n)) onChange(n);
-  };
-
   return (
-    <Field label="Stake" hint={hint}>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value.toString()}
-        onChange={(e) => setNumeric(e.target.value)}
-        className={cn(
-          "min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] font-semibold tabular-nums text-opt-ink",
-          "outline-none placeholder:text-opt-ink-4",
-        )}
-      />
-      <span className="text-[13px] font-medium text-opt-ink-3">{currency}</span>
-      {withSteppers && (
-        <div className="ml-1 flex gap-0.5">
-          <Stepper
-            ariaLabel="Decrease stake"
-            disabled={min !== undefined && value <= min}
-            onClick={() => onChange(Math.max(min ?? -Infinity, value - step))}
-          >
-            <MinusIcon className="h-3.5 w-3.5" />
-          </Stepper>
-          <Stepper
-            ariaLabel="Increase stake"
-            disabled={max !== undefined && value >= max}
-            onClick={() => onChange(Math.min(max ?? Infinity, value + step))}
-          >
-            <PlusIcon className="h-3.5 w-3.5" />
-          </Stepper>
-        </div>
+    <Field label="Stake" hint={hint} active={open}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex flex-1 items-center justify-between gap-2 bg-transparent text-left"
+      >
+        <span className="font-mono text-[14px] font-semibold tabular-nums text-opt-ink">
+          {value}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="text-[13px] font-medium text-opt-ink-3">
+            {currency}
+          </span>
+          <CaretDownIcon className="h-3.5 w-3.5 text-opt-ink-3" />
+        </span>
+      </button>
+
+      {open && (
+        <AnchoredPopover anchorRef={triggerRef} onClose={() => setOpen(false)}>
+          <StakePicker
+            value={value}
+            currency={currency}
+            min={min}
+            max={max}
+            onSelect={(n) => {
+              onChange(n);
+              setOpen(false);
+            }}
+          />
+        </AnchoredPopover>
       )}
     </Field>
-  );
-}
-
-function Stepper({
-  ariaLabel,
-  disabled,
-  onClick,
-  children,
-}: {
-  ariaLabel: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "grid h-6 w-6 place-items-center rounded-md border-0 bg-opt-bg-sunk text-opt-ink-2",
-        "transition-colors hover:bg-opt-line hover:text-opt-ink",
-        "disabled:opacity-40 disabled:hover:bg-opt-bg-sunk",
-      )}
-    >
-      {children}
-    </button>
   );
 }

@@ -17,7 +17,8 @@ interface RiseFallPanelProps {
 
 export function RiseFallPanel({ symbol }: RiseFallPanelProps) {
   const [side, setSide] = useState<Side>("rise");
-  const [duration, setDuration] = useDefaultDuration();
+  // Spec §13: Rise/Fall defaults to 5 ticks.
+  const [duration, setDuration] = useDefaultDuration({ amount: 5, unit: "ticks" });
   const [stake, setStake] = useState<number>(10);
   const [allowEquals, setAllowEquals] = useState<boolean>(false);
 

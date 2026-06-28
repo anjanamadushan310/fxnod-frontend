@@ -17,11 +17,9 @@ interface SideToggleProps {
 }
 
 /**
- * Two-pill segmented switch with a sliding thumb. The Side label takes the
- * rise/fall colour when active.
- *
- * Thumb is CSS-translate driven — the two cells are guaranteed equal-width
- * so no measurement is needed.
+ * Directional sub-tabs (Deriv DTrader §6.1). Two equal-width tabs; the active
+ * one always gets **teal** text + a teal underline (the direction's green/red
+ * only shows up on the Buy button, per the spec's sub-tab state table).
  */
 export function RiseFallToggle({
   value,
@@ -29,45 +27,22 @@ export function RiseFallToggle({
   labels = { rise: "Rise", fall: "Fall" },
 }: SideToggleProps) {
   return (
-    <div
-      className={cn(
-        "relative grid grid-cols-2 gap-0 rounded-[10px] bg-opt-bg-sunk p-[3px]",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-lg bg-opt-bg-elev",
-          "shadow-[0_1px_2px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.04)]",
-          "transition-transform duration-200 ease-out",
-          value === "fall" && "translate-x-full",
-        )}
-      />
-      <Pill
-        side="rise"
-        on={value === "rise"}
-        onClick={() => onChange("rise")}
-      >
+    <div className="grid grid-cols-2 border-b border-opt-line">
+      <Tab on={value === "rise"} onClick={() => onChange("rise")}>
         {labels.rise}
-      </Pill>
-      <Pill
-        side="fall"
-        on={value === "fall"}
-        onClick={() => onChange("fall")}
-      >
+      </Tab>
+      <Tab on={value === "fall"} onClick={() => onChange("fall")}>
         {labels.fall}
-      </Pill>
+      </Tab>
     </div>
   );
 }
 
-function Pill({
-  side,
+function Tab({
   on,
   onClick,
   children,
 }: {
-  side: Side;
   on: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -76,17 +51,21 @@ function Pill({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={on}
       className={cn(
-        "relative z-10 rounded-lg border-0 bg-transparent px-2.5 py-2.5 text-[13.5px] font-semibold",
+        "relative -mb-px border-0 bg-transparent px-2 py-2.5 text-[14px] font-semibold",
         "transition-colors duration-150",
-        on
-          ? side === "rise"
-            ? "text-opt-rise"
-            : "text-opt-fall"
-          : "text-opt-ink-3",
+        // Deriv brand teal #00A79E for the active tab; gray otherwise.
+        on ? "text-[#00A79E]" : "text-opt-ink-3 hover:text-opt-ink",
       )}
     >
       {children}
+      {on && (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-[2px] bg-[#00A79E]"
+        />
+      )}
     </button>
   );
 }
