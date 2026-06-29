@@ -1,19 +1,41 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { PencilIcon } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
+import {
+  useChartDrawings,
+  type Drawing,
+  type DrawingTool,
+} from "@/stores/useChartDrawings";
+import { useLiveMarket } from "@/stores/useLiveMarket";
 
 const TEAL = "#00A79E";
 
 type DrawTab = "active" | "all";
 
-const TOOLS: { id: string; label: string; preview: React.ReactNode }[] = [
+const TOOLS: { id: DrawingTool; label: string; preview: React.ReactNode }[] = [
   { id: "horizontal", label: "Horizontal line", preview: <HorizontalPreview /> },
   { id: "trend", label: "Trend line", preview: <TrendPreview /> },
   { id: "vertical", label: "Vertical line", preview: <VerticalPreview /> },
 ];
+
+const TOOL_PREVIEW: Record<DrawingTool, React.ReactNode> = {
+  horizontal: <HorizontalPreview />,
+  trend: <TrendPreview />,
+  vertical: <VerticalPreview />,
+};
+
+/** Short human label for an active drawing row. */
+function drawingLabel(d: Drawing): string {
+  if (d.tool === "horizontal") return `Horizontal · ${d.price?.toFixed(2) ?? ""}`;
+  if (d.tool === "vertical") {
+    const t = d.time ? new Date(d.time * 1000) : null;
+    return `Vertical · ${t ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}`;
+  }
+  return "Trend line";
+}
 
 /**
  * Drawing Tools split-pane modal (Deriv §4.3). Left nav (Active / All drawings,
@@ -22,6 +44,18 @@ const TOOLS: { id: string; label: string; preview: React.ReactNode }[] = [
  */
 export function DrawingToolsPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<DrawTab>("all");
+
+  const symbol = useLiveMarket((s) => s.symbol);
+  const allDrawings = useChartDrawings((s) => s.drawings);
+  const setActiveTool = useChartDrawings((s) => s.setActiveTool);
+  const removeDrawing = useChartDrawings((s) => s.removeDrawing);
+  const active = allDrawings.filter((d) => d.symbol === symbol);
+
+  /** Arm a tool for the next click(s) on the chart, then close the panel. */
+  function selectTool(tool: DrawingTool) {
+    setActiveTool(tool);
+    onClose();
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -76,21 +110,48 @@ export function DrawingToolsPanel({ onClose }: { onClose: () => void }) {
 
           <div className="min-h-0 overflow-y-auto p-2">
             {tab === "active" ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-opt-bg-sunk text-opt-ink-4">
-                  <PencilIcon className="h-5 w-5" />
-                </span>
-                <p className="text-[13px] text-opt-ink-3">
-                  You have no active drawings yet.
-                </p>
-              </div>
+              active.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-opt-bg-sunk text-opt-ink-4">
+                    <PencilIcon className="h-5 w-5" />
+                  </span>
+                  <p className="text-[13px] text-opt-ink-3">
+                    You have no active drawings yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {active.map((d) => (
+                    <div
+                      key={d.id}
+                      className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-opt-bg-sunk"
+                    >
+                      <span className="flex h-5 w-6 flex-shrink-0 items-center justify-center">
+                        {TOOL_PREVIEW[d.tool]}
+                      </span>
+                      <span className="flex-1 truncate text-[13.5px] font-medium text-opt-ink">
+                        {drawingLabel(d)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Delete drawing"
+                        title="Delete drawing"
+                        onClick={() => removeDrawing(d.id)}
+                        className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md text-opt-ink-4 transition-colors hover:bg-opt-bg-elev hover:text-opt-fall"
+                      >
+                        <Trash2 className="h-[15px] w-[15px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : (
               <div className="flex flex-col">
                 {TOOLS.map((tool) => (
                   <button
                     key={tool.id}
                     type="button"
-                    onClick={onClose}
+                    onClick={() => selectTool(tool.id)}
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-opt-bg-sunk"
                   >
                     <span className="flex h-5 w-6 flex-shrink-0 items-center justify-center">

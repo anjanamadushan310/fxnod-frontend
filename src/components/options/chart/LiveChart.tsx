@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -21,6 +22,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -32,7 +34,21 @@ import {
   type FeedTick,
 } from "@/hooks/useDerivChartFeed";
 import { feedPlan, toDerivSymbol } from "@/services/deriv/derivSymbols";
+import {
+  useChartDrawings,
+  type Drawing,
+  type DrawingTool,
+} from "@/stores/useChartDrawings";
+import { TrendPrimitive, VerticalPrimitive } from "./chartPrimitives";
 import type { ChartTypeId, IntervalId } from "./chartSettings";
+
+/** Accent color for user-drawn lines (drawn on canvas — needs literal hex). */
+const DRAWING_COLOR = "#2962FF";
+
+/** Live chart objects backing one Drawing, removed when the drawing is deleted. */
+type DrawingObj =
+  | { kind: "priceline"; line: IPriceLine }
+  | { kind: "primitive"; primitive: TrendPrimitive | VerticalPrimitive };
 
 interface LiveChartProps {
   /** Catalog id (e.g. "vol_100_1s") — mapped to a Deriv symbol internally. */
@@ -99,6 +115,21 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
     const markersRef = useRef<SeriesMarker<Time>[]>([]);
     const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
+    // Drawing tools: armed tool + this symbol's drawings (from the store), plus
+    // the live chart objects backing them and the pending first trend-line click.
+    const activeTool = useChartDrawings((s) => s.activeTool);
+    const allDrawings = useChartDrawings((s) => s.drawings);
+    const drawings = useMemo(
+      () => allDrawings.filter((d) => d.symbol === symbol),
+      [allDrawings, symbol],
+    );
+    const drawingsRef = useRef<Drawing[]>(drawings);
+    drawingsRef.current = drawings;
+    const activeToolRef = useRef<DrawingTool | null>(activeTool);
+    activeToolRef.current = activeTool;
+    const drawingObjsRef = useRef<Map<string, DrawingObj>>(new Map());
+    const pendingTrendRef = useRef<{ time: Time; price: number } | null>(null);
+
     const [status, setStatus] = useState<FeedStatus>("idle");
 
     const derivSymbol = toDerivSymbol(symbol);
@@ -153,6 +184,7 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
         seriesRef.current = null;
         markersApiRef.current = null;
         priceLineObjsRef.current = [];
+        drawingObjsRef.current.clear();
       };
     }, []);
 
@@ -173,6 +205,7 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
         seriesRef.current = null;
         priceLineObjsRef.current = []; // died with the old series
         markersApiRef.current = null;
+        drawingObjsRef.current.clear(); // price lines + primitives died too
       }
 
       if (seriesKind === "candlestick") {
@@ -205,8 +238,77 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
         seriesRef.current,
         markersRef.current,
       );
+      // Re-attach user drawings to the fresh series.
+      applyDrawings(seriesRef.current, drawingsRef.current, drawingObjsRef);
       chart.timeScale().fitContent();
     }, [seriesKind]);
+
+    // ── Drawing tools: cursor, click capture, and render sync ───────────────
+    // Crosshair cursor while a tool is armed; clear a half-finished trend line
+    // when the tool is disarmed.
+    useEffect(() => {
+      const el = containerRef.current;
+      if (el) el.style.cursor = activeTool ? "crosshair" : "";
+      if (!activeTool) pendingTrendRef.current = null;
+    }, [activeTool]);
+
+    // Subscribe to chart clicks once; the handler reads the armed tool from a
+    // ref so it never goes stale. Horizontal → one click; vertical → one click;
+    // trend → two clicks. Placing a drawing disarms the tool (one-shot).
+    useEffect(() => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const handler = (param: MouseEventParams) => {
+        const tool = activeToolRef.current;
+        const series = seriesRef.current;
+        const point = param.point;
+        if (!tool || !series || !point) return;
+
+        const price = series.coordinateToPrice(point.y);
+        const time = (param.time ??
+          chart.timeScale().coordinateToTime(point.x)) as Time | null;
+        const store = useChartDrawings.getState();
+
+        if (tool === "horizontal") {
+          if (price === null) return;
+          store.addDrawing({ symbol, tool, color: DRAWING_COLOR, price: Number(price) });
+          store.setActiveTool(null);
+        } else if (tool === "vertical") {
+          if (time === null) return;
+          store.addDrawing({ symbol, tool, color: DRAWING_COLOR, time: Number(time) });
+          store.setActiveTool(null);
+        } else {
+          // trend — first click anchors, second click completes.
+          if (time === null || price === null) return;
+          const pt = { time, price: Number(price) };
+          if (!pendingTrendRef.current) {
+            pendingTrendRef.current = pt;
+            return;
+          }
+          const a = pendingTrendRef.current;
+          store.addDrawing({
+            symbol,
+            tool,
+            color: DRAWING_COLOR,
+            points: [
+              { time: Number(a.time), price: a.price },
+              { time: Number(pt.time), price: pt.price },
+            ],
+          });
+          pendingTrendRef.current = null;
+          store.setActiveTool(null);
+        }
+      };
+      chart.subscribeClick(handler);
+      return () => chart.unsubscribeClick(handler);
+    }, [symbol]);
+
+    // Re-render drawings whenever the store set for this symbol changes.
+    useEffect(() => {
+      if (seriesRef.current) {
+        applyDrawings(seriesRef.current, drawings, drawingObjsRef);
+      }
+    }, [drawings]);
 
     // ── Live feed — pushes straight into the series via refs ────────────────
     useDerivChartFeed({
@@ -361,6 +463,51 @@ function applyPriceLines(
       title: spec.title ?? "",
     }),
   );
+}
+
+/** Tear down every tracked drawing on `series`, then (re)create from `drawings`.
+ *  Horizontal → built-in price line; trend/vertical → v5 series primitives. */
+function applyDrawings(
+  series: ISeriesApi<"Area"> | ISeriesApi<"Candlestick">,
+  drawings: Drawing[],
+  objsRef: React.MutableRefObject<Map<string, DrawingObj>>,
+) {
+  for (const obj of objsRef.current.values()) {
+    try {
+      if (obj.kind === "priceline") series.removePriceLine(obj.line);
+      else series.detachPrimitive(obj.primitive);
+    } catch {
+      /* series may have been recreated — safe to ignore */
+    }
+  }
+  objsRef.current.clear();
+
+  for (const d of drawings) {
+    if (d.tool === "horizontal" && d.price != null) {
+      const line = series.createPriceLine({
+        price: d.price,
+        color: d.color,
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: "",
+      });
+      objsRef.current.set(d.id, { kind: "priceline", line });
+    } else if (d.tool === "vertical" && d.time != null) {
+      const primitive = new VerticalPrimitive(d.time as Time, d.color);
+      series.attachPrimitive(primitive);
+      objsRef.current.set(d.id, { kind: "primitive", primitive });
+    } else if (d.tool === "trend" && d.points) {
+      const [p1, p2] = d.points;
+      const primitive = new TrendPrimitive(
+        { time: p1.time as Time, price: p1.price },
+        { time: p2.time as Time, price: p2.price },
+        d.color,
+      );
+      series.attachPrimitive(primitive);
+      objsRef.current.set(d.id, { kind: "primitive", primitive });
+    }
+  }
 }
 
 // ─── data helpers ────────────────────────────────────────────────────────────
