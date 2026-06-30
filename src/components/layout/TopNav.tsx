@@ -1,15 +1,29 @@
 "use client";
 
-import { BellIcon, MenuIcon } from "@/components/ui/Icons";
+import { useEffect, useRef, useState } from "react";
+import { BellIcon, CaretDownIcon, MenuIcon } from "@/components/ui/Icons";
 import { cn } from "@/lib/cn";
 
-const NAV_ITEMS: { label: string; href: string; active?: boolean }[] = [
+interface NavItem {
+  label: string;
+  href?: string;
+  active?: boolean;
+  /** Renders an Accounts-style dropdown instead of a link. */
+  dropdown?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: "DASHBOARD", href: "/home", active: true },
   { label: "MARKETS", href: "#" },
   { label: "TOOLS", href: "#" },
-  { label: "ACCOUNTS", href: "#" },
+  { label: "ACCOUNTS", dropdown: true },
   { label: "LEARN", href: "#" },
   { label: "SUPPORT", href: "#" },
+];
+
+const ACCOUNT_LINKS: { label: string; href: string }[] = [
+  { label: "Login", href: "/auth/login" },
+  { label: "Register", href: "/auth/register" },
 ];
 
 interface TopNavProps {
@@ -50,27 +64,31 @@ export function TopNav({ onMenu }: TopNavProps) {
         FXNOD
       </div>
 
-      <nav className="ml-auto flex gap-9 text-[13px] font-semibold tracking-[0.13em] max-lg:hidden">
-        {NAV_ITEMS.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            className={cn(
-              "relative py-1.5 transition-colors",
-              item.active
-                ? "text-gold"
-                : "text-[#e9e3cb]/65 hover:text-[#e9e3cb]",
-            )}
-          >
-            {item.label}
-            {item.active && (
-              <span
-                aria-hidden
-                className="absolute -bottom-[22px] left-1/2 h-[3px] w-8 -translate-x-1/2 rounded-t-sm bg-gold"
-              />
-            )}
-          </a>
-        ))}
+      <nav className="ml-auto flex items-center gap-9 text-[13px] font-semibold tracking-[0.13em] max-lg:hidden">
+        {NAV_ITEMS.map((item) =>
+          item.dropdown ? (
+            <AccountsDropdown key={item.label} label={item.label} />
+          ) : (
+            <a
+              key={item.label}
+              href={item.href}
+              className={cn(
+                "relative py-1.5 transition-colors",
+                item.active
+                  ? "text-gold"
+                  : "text-[#e9e3cb]/65 hover:text-[#e9e3cb]",
+              )}
+            >
+              {item.label}
+              {item.active && (
+                <span
+                  aria-hidden
+                  className="absolute -bottom-[22px] left-1/2 h-[3px] w-8 -translate-x-1/2 rounded-t-sm bg-gold"
+                />
+              )}
+            </a>
+          ),
+        )}
       </nav>
 
       <div className="ml-9 flex items-center gap-[18px] max-lg:ml-auto">
@@ -87,5 +105,103 @@ export function TopNav({ onMenu }: TopNavProps) {
         </button>
       </div>
     </header>
+  );
+}
+
+/**
+ * "Accounts" navbar item rendered as a dropdown of auth entry points.
+ *
+ * Opens on hover (with a small close delay so the cursor can cross the gap into
+ * the menu) and toggles on click; closes on click-outside or Escape. Styled to
+ * match the navy/gold navbar theme and aligned beneath the other nav links.
+ */
+function AccountsDropdown({ label }: { label: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Clear any pending close timer on unmount.
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
+
+  const openNow = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  };
+  const closeSoon = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 140);
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onMouseEnter={openNow}
+      onMouseLeave={closeSoon}
+    >
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1 py-1.5 tracking-[0.13em] transition-colors",
+          open ? "text-[#e9e3cb]" : "text-[#e9e3cb]/65 hover:text-[#e9e3cb]",
+        )}
+      >
+        {label}
+        <CaretDownIcon
+          className={cn(
+            "h-3 w-3 transition-transform duration-150",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Accounts"
+          className={cn(
+            "absolute left-0 top-[calc(100%+16px)] z-50 w-44 overflow-hidden rounded-xl py-1.5",
+            "border border-gold/25 bg-[var(--navy-2)]",
+            "shadow-[0_18px_44px_rgba(0,0,0,0.5)]",
+          )}
+        >
+          {ACCOUNT_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={cn(
+                "block px-4 py-2 text-[12.5px] font-semibold tracking-[0.08em]",
+                "text-[#e9e3cb]/80 transition-colors hover:bg-gold/[0.12] hover:text-gold",
+              )}
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
