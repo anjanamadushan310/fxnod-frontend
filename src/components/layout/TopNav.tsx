@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { BellIcon, CaretDownIcon, MenuIcon } from "@/components/ui/Icons";
+import { useAuthStore } from "@/stores/authStore";
 import { cn } from "@/lib/cn";
 
 interface NavItem {
@@ -120,6 +122,15 @@ function AccountsDropdown({ label }: { label: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isAuthenticated = useAuthStore((s) => s.status === "authenticated");
+  const logout = useAuthStore((s) => s.logout);
+
+  async function handleLogout() {
+    setOpen(false);
+    await logout();
+    toast.success("Signed out");
+  }
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -186,20 +197,34 @@ function AccountsDropdown({ label }: { label: string }) {
             "shadow-[0_18px_44px_rgba(0,0,0,0.5)]",
           )}
         >
-          {ACCOUNT_LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
+          {isAuthenticated ? (
+            <button
+              type="button"
               role="menuitem"
-              onClick={() => setOpen(false)}
+              onClick={handleLogout}
               className={cn(
-                "block px-4 py-2 text-[12.5px] font-semibold tracking-[0.08em]",
+                "block w-full px-4 py-2 text-left text-[12.5px] font-semibold tracking-[0.08em]",
                 "text-[#e9e3cb]/80 transition-colors hover:bg-gold/[0.12] hover:text-gold",
               )}
             >
-              {link.label}
-            </a>
-          ))}
+              Logout
+            </button>
+          ) : (
+            ACCOUNT_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className={cn(
+                  "block px-4 py-2 text-[12.5px] font-semibold tracking-[0.08em]",
+                  "text-[#e9e3cb]/80 transition-colors hover:bg-gold/[0.12] hover:text-gold",
+                )}
+              >
+                {link.label}
+              </a>
+            ))
+          )}
         </div>
       )}
     </div>
