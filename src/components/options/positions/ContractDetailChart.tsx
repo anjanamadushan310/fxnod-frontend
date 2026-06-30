@@ -11,6 +11,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
+import { CHART_COLORS } from "../chart/chartColors";
 import type { ContractDetail } from "./contractDetail";
 
 /**
@@ -19,8 +20,8 @@ import type { ContractDetail } from "./contractDetail";
  * path. Each tick is a numbered node; the exit node is green (win) / red
  * (loss); the entry barrier is a dashed horizontal line.
  *
- * Theme colours are read from the scoped `--opt-*` vars (the modal portals
- * into the `[data-app="options"]` subtree, so they resolve).
+ * Colours are literal hex (CHART_COLORS) — lightweight-charts cannot parse the
+ * oklch() values our --opt-* Tailwind tokens resolve to.
  */
 export function ContractDetailChart({ detail }: { detail: ContractDetail }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,12 +30,11 @@ export function ContractDetailChart({ detail }: { detail: ContractDetail }) {
     const el = containerRef.current;
     if (!el) return;
 
-    const css = (n: string) => getComputedStyle(el).getPropertyValue(n).trim();
-    const ink = css("--opt-ink") || "#0a1430";
-    const line = css("--opt-line") || "#e7e4dc";
-    const inkFaint = css("--opt-ink-3") || "#7b8298";
-    const rise = css("--opt-rise") || "#1eaf7b";
-    const fall = css("--opt-fall") || "#e0533d";
+    const ink = CHART_COLORS.ink;
+    const line = CHART_COLORS.line;
+    const inkFaint = CHART_COLORS.inkFaint;
+    const rise = CHART_COLORS.rise;
+    const fall = CHART_COLORS.fall;
     const exitColor = detail.outcome === "won" ? rise : fall;
 
     const chart = createChart(el, {

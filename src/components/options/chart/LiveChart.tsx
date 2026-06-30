@@ -39,6 +39,7 @@ import {
   type Drawing,
   type DrawingTool,
 } from "@/stores/useChartDrawings";
+import { CHART_COLORS } from "./chartColors";
 import { TrendPrimitive, VerticalPrimitive } from "./chartPrimitives";
 import type { ChartTypeId, IntervalId } from "./chartSettings";
 
@@ -141,10 +142,10 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
       const el = containerRef.current;
       if (!el) return;
 
-      const css = (name: string) =>
-        getComputedStyle(el).getPropertyValue(name).trim();
-      const line = css("--opt-line") || "#e7e4dc";
-      const inkFaint = css("--opt-ink-3") || "#7b8298";
+      // Literal hex only — lightweight-charts cannot parse oklch() (the form
+      // our --opt-* Tailwind tokens resolve to). See chartColors.ts.
+      const line = CHART_COLORS.line;
+      const inkFaint = CHART_COLORS.inkFaint;
 
       const chart = createChart(el, {
         width: el.clientWidth,
@@ -194,11 +195,10 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(
       const el = containerRef.current;
       if (!chart || !el) return;
 
-      const css = (name: string) =>
-        getComputedStyle(el).getPropertyValue(name).trim();
-      const ink = css("--opt-ink") || "#0a1430";
-      const rise = css("--opt-rise") || "#1eaf7b";
-      const fall = css("--opt-fall") || "#e0533d";
+      // Literal hex only — see chartColors.ts (oklch crashes the chart parser).
+      const ink = CHART_COLORS.ink;
+      const rise = CHART_COLORS.rise;
+      const fall = CHART_COLORS.fall;
 
       if (seriesRef.current) {
         chart.removeSeries(seriesRef.current);
