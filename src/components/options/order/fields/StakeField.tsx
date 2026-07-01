@@ -33,10 +33,8 @@ export function StakeField({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const hint =
-    min !== undefined && max !== undefined
-      ? `min ${min} · max ${max.toLocaleString()}`
-      : undefined;
+  // Deriv surfaces only the minimum on the stake field (no explicit max).
+  const hint = min !== undefined ? `min ${min}` : undefined;
 
   return (
     <Field label="Stake" hint={hint} active={open}>

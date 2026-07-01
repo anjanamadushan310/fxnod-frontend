@@ -3,10 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChartSettings } from "@/hooks/useChartSettings";
 import { useChartOverlays } from "@/hooks/useChartOverlays";
-import {
-  useTradeOverlays,
-  type OverlayContractType,
-} from "@/stores/useTradeOverlays";
+import { useTradeOverlays } from "@/stores/useTradeOverlays";
 import { useLiveMarket } from "@/stores/useLiveMarket";
 import { MarketPicker } from "../market/MarketPicker";
 import { ChartFooter } from "./ChartFooter";
@@ -14,9 +11,6 @@ import { ChartToolbar, ChartNavControls } from "./ChartToolbar";
 import { LiveChart, type LiveChartHandle } from "./LiveChart";
 import { MarketPill } from "./MarketPill";
 import { StatsStrip } from "./StatsStrip";
-
-/** TEMP simulation: how far ahead the fake contract expires (seconds). */
-const SIM_DURATION_SECONDS = 60;
 
 interface ChartPanelProps {
   /** Catalog id of the active market (e.g. "vol_100_1s"). */
@@ -62,41 +56,21 @@ export function ChartPanel({
   const anchorRef = useRef<number | null>(null);
 
   // ── Options overlays (barrier lines + entry/exit markers) ────────────────
+  // Populated by a real buy (usePanelBuy → useTradeOverlays.addOverlay).
   const chartRef = useRef<LiveChartHandle | null>(null);
   const allOverlays = useTradeOverlays((s) => s.overlays);
-  const addOverlay = useTradeOverlays((s) => s.addOverlay);
-  const clearSymbol = useTradeOverlays((s) => s.clearSymbol);
-  // Only draw overlays belonging to the market currently on screen.
   const overlays = useMemo(
     () => allOverlays.filter((o) => o.symbol === marketId),
     [allOverlays, marketId],
   );
   useChartOverlays(chartRef, overlays);
 
-  // TEMP: stand-in for real trade execution. Anchors the strike to the current
-  // live price, start = now, end = now + SIM_DURATION_SECONDS.
-  const simulateTrade = useCallback(
-    (direction: OverlayContractType) => {
-      const strike = livePrice;
-      if (strike === null) return; // wait for the first live tick
-      const now = Math.floor(Date.now() / 1000);
-      addOverlay({
-        symbol: marketId,
-        contractType: direction,
-        strikePrice: strike,
-        startTime: now,
-        endTime: now + SIM_DURATION_SECONDS,
-      });
-    },
-    [addOverlay, livePrice, marketId],
-  );
-
   // Reset the price readout when the market changes — the next stream seeds it.
   useEffect(() => {
     setLivePrice(null);
     anchorRef.current = null;
-    // Publish the on-screen market id/name so the buy handler can anchor a
-    // simulated barrier/position to it.
+    // Publish the on-screen market id/name so the buy handler can anchor the
+    // barrier/position overlay to it.
     useLiveMarket.getState().set({ symbol: marketId, marketName });
   }, [marketId, marketName]);
 
@@ -161,72 +135,9 @@ export function ChartPanel({
         </div>
       </div>
 
-      {/* TEMP: overlay simulation harness — remove once real trade execution
-          populates useTradeOverlays on a successful buy. */}
-      <SimulateOverlayBar
-        disabled={livePrice === null}
-        activeCount={overlays.length}
-        onSimulate={simulateTrade}
-        onClear={() => clearSymbol(marketId)}
-      />
-
       {showStatsStrip && <StatsStrip />}
 
       <ChartFooter />
-    </div>
-  );
-}
-
-/**
- * TEMPORARY developer harness for the chart-overlay feature. Draws a simulated
- * Rise/Fall barrier + entry/exit markers using the current live price. Delete
- * this once real trade execution writes to useTradeOverlays.
- */
-function SimulateOverlayBar({
-  disabled,
-  activeCount,
-  onSimulate,
-  onClear,
-}: {
-  disabled: boolean;
-  activeCount: number;
-  onSimulate: (direction: OverlayContractType) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="flex items-center gap-2 px-4 py-2 text-[12px]">
-      <span className="font-semibold uppercase tracking-wide text-opt-ink-4">
-        Sim
-      </span>
-      <button
-        type="button"
-        onClick={() => onSimulate("rise")}
-        disabled={disabled}
-        className="rounded-md px-2.5 py-1 font-semibold text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        style={{ backgroundColor: "#1eaf7b" }}
-      >
-        Simulate Rise
-      </button>
-      <button
-        type="button"
-        onClick={() => onSimulate("fall")}
-        disabled={disabled}
-        className="rounded-md px-2.5 py-1 font-semibold text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        style={{ backgroundColor: "#e0533d" }}
-      >
-        Simulate Fall
-      </button>
-      <button
-        type="button"
-        onClick={onClear}
-        disabled={activeCount === 0}
-        className="rounded-md bg-opt-bg-sunk px-2.5 py-1 font-medium text-opt-ink-2 transition-colors hover:text-opt-ink disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Clear{activeCount > 0 ? ` (${activeCount})` : ""}
-      </button>
-      {disabled && (
-        <span className="text-opt-ink-4">waiting for live price…</span>
-      )}
     </div>
   );
 }

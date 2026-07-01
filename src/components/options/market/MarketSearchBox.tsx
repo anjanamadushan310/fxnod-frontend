@@ -16,7 +16,7 @@ interface MarketSearchBoxProps {
 export function MarketSearchBox({
   value,
   onChange,
-  placeholder = "Search markets",
+  placeholder = "Search…",
 }: MarketSearchBoxProps) {
   return (
     <div
