@@ -11,8 +11,8 @@ import { api } from "./api";
 export interface UserPublic {
   id: string;
   email: string;
-  first_name: string | null;
-  last_name: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
   phone: string | null;
   is_email_verified: boolean;
   is_active: boolean;
@@ -28,11 +28,10 @@ export interface LoginResponse {
 }
 
 export interface RegisterPayload {
+  full_name: string;
   email: string;
   password: string;
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
+  confirm_password: string;
 }
 
 export interface DerivLoginPayload {

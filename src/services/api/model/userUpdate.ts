@@ -33,15 +33,15 @@ library, not a float.
 
 export interface UserUpdate {
   /**
-   * @maxLength 100
+   * @maxLength 200
    * @nullable
    */
-  first_name?: string | null;
+  full_name?: string | null;
   /**
-   * @maxLength 100
+   * @maxLength 1024
    * @nullable
    */
-  last_name?: string | null;
+  avatar_url?: string | null;
   /**
    * @maxLength 32
    * @nullable

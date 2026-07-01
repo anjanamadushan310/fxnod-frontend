@@ -19,17 +19,18 @@ import { Field, SubmitButton } from "./fields";
 export function RegisterForm() {
   const router = useRouter();
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const registerMut = useRegister({
     mutation: {
       onSuccess: () => {
-        toast.success("Account created — please log in to continue.");
-        router.push("/auth/login" as Route);
+        toast.success("Account created — enter the code we emailed to verify.");
+        // Registration issues an OTP; continue to the verification screen.
+        router.push(`/auth/verify-otp?email=${encodeURIComponent(email)}` as Route);
       },
       onError: (err) => {
         const parsed = parseApiError(err, "Registration failed. Please try again.");
@@ -42,12 +43,16 @@ export function RegisterForm() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFieldErrors({});
+    if (password !== confirmPassword) {
+      setFieldErrors({ confirm_password: "Passwords do not match" });
+      return;
+    }
     registerMut.mutate({
       data: {
+        full_name: fullName,
         email,
         password,
-        first_name: firstName || undefined,
-        last_name: lastName || undefined,
+        confirm_password: confirmPassword,
       },
     });
   }
@@ -66,22 +71,15 @@ export function RegisterForm() {
       }
     >
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="First name"
-            value={firstName}
-            onChange={setFirstName}
-            error={fieldErrors.first_name}
-            autoComplete="given-name"
-          />
-          <Field
-            label="Last name"
-            value={lastName}
-            onChange={setLastName}
-            error={fieldErrors.last_name}
-            autoComplete="family-name"
-          />
-        </div>
+        <Field
+          label="Full name"
+          value={fullName}
+          onChange={setFullName}
+          error={fieldErrors.full_name}
+          autoComplete="name"
+          placeholder="Ada Lovelace"
+          required
+        />
         <Field
           label="Email"
           type="email"
@@ -100,6 +98,16 @@ export function RegisterForm() {
           error={fieldErrors.password}
           autoComplete="new-password"
           placeholder="At least 8 characters"
+          required
+        />
+        <Field
+          label="Confirm password"
+          type="password"
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          error={fieldErrors.confirm_password}
+          autoComplete="new-password"
+          placeholder="Re-enter your password"
           required
         />
         <SubmitButton pending={registerMut.isPending}>Create account</SubmitButton>

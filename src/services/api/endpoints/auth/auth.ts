@@ -46,12 +46,15 @@ import type {
   Error,
   LoginRequest,
   MessageResponse,
+  OAuthLoginRequest,
   RefreshRequest,
   RegisterRequest,
   RegisterResponse,
+  ResendOTPRequest,
   TokenPair,
   ValidationErrorResponse,
-  VerifyEmailRequest
+  VerifyEmailRequest,
+  VerifyOTPRequest
 } from '../../model';
 
 import { customInstance } from '../../mutator/custom-instance';
@@ -322,6 +325,212 @@ export const useVerifyEmail = <TError = ErrorType<Error | ValidationErrorRespons
       > => {
 
       const mutationOptions = getVerifyEmailMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Confirms an account using the 6-digit code emailed at registration and
+establishes a session — returns an access/refresh token pair and sets
+the httpOnly refresh cookie, same shape as login. Runs alongside the
+magic-link flow; either verifies the account. Rate-limited per client
+IP; failure responses are uniform to prevent account enumeration.
+
+ * @summary Verify account with a numeric OTP (and log in)
+ */
+export const verifyOtp = (
+    verifyOTPRequest: BodyType<VerifyOTPRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<TokenPair>(
+      {url: `/api/v1/auth/verify-otp`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: verifyOTPRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getVerifyOtpMutationOptions = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyOtp>>, TError,{data: BodyType<VerifyOTPRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyOtp>>, TError,{data: BodyType<VerifyOTPRequest>}, TContext> => {
+
+const mutationKey = ['verifyOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyOtp>>, {data: BodyType<VerifyOTPRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyOtp(data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyOtpMutationResult = NonNullable<Awaited<ReturnType<typeof verifyOtp>>>
+    export type VerifyOtpMutationBody = BodyType<VerifyOTPRequest>
+    export type VerifyOtpMutationError = ErrorType<Error | ValidationErrorResponse>
+
+    /**
+ * @summary Verify account with a numeric OTP (and log in)
+ */
+export const useVerifyOtp = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyOtp>>, TError,{data: BodyType<VerifyOTPRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof verifyOtp>>,
+        TError,
+        {data: BodyType<VerifyOTPRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getVerifyOtpMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Reissues a code for an existing, un-verified account (subject to a
+cooldown). Always returns 200 to avoid account enumeration.
+
+ * @summary Resend a verification OTP
+ */
+export const resendOtp = (
+    resendOTPRequest: BodyType<ResendOTPRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<MessageResponse>(
+      {url: `/api/v1/auth/resend-otp`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: resendOTPRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getResendOtpMutationOptions = <TError = ErrorType<ValidationErrorResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOTPRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOTPRequest>}, TContext> => {
+
+const mutationKey = ['resendOtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendOtp>>, {data: BodyType<ResendOTPRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resendOtp(data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResendOtpMutationResult = NonNullable<Awaited<ReturnType<typeof resendOtp>>>
+    export type ResendOtpMutationBody = BodyType<ResendOTPRequest>
+    export type ResendOtpMutationError = ErrorType<ValidationErrorResponse | Error>
+
+    /**
+ * @summary Resend a verification OTP
+ */
+export const useResendOtp = <TError = ErrorType<ValidationErrorResponse | Error>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendOtp>>, TError,{data: BodyType<ResendOTPRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof resendOtp>>,
+        TError,
+        {data: BodyType<ResendOTPRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getResendOtpMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Verifies a provider credential, links it to a primary account (or
+creates a passwordless one), and returns a token pair + refresh cookie.
+First-time social users skip OTP and land on the dashboard.
+
+ * @summary Social sign-in (Google / Apple / Facebook)
+ */
+export const oauthLogin = (
+    provider: 'google' | 'apple' | 'facebook',
+    oAuthLoginRequest: BodyType<OAuthLoginRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<TokenPair>(
+      {url: `/api/v1/auth/oauth/${provider}`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: oAuthLoginRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getOauthLoginMutationOptions = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthLogin>>, TError,{provider: 'google' | 'apple' | 'facebook';data: BodyType<OAuthLoginRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof oauthLogin>>, TError,{provider: 'google' | 'apple' | 'facebook';data: BodyType<OAuthLoginRequest>}, TContext> => {
+
+const mutationKey = ['oauthLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof oauthLogin>>, {provider: 'google' | 'apple' | 'facebook';data: BodyType<OAuthLoginRequest>}> = (props) => {
+          const {provider,data} = props ?? {};
+
+          return  oauthLogin(provider,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OauthLoginMutationResult = NonNullable<Awaited<ReturnType<typeof oauthLogin>>>
+    export type OauthLoginMutationBody = BodyType<OAuthLoginRequest>
+    export type OauthLoginMutationError = ErrorType<Error | ValidationErrorResponse>
+
+    /**
+ * @summary Social sign-in (Google / Apple / Facebook)
+ */
+export const useOauthLogin = <TError = ErrorType<Error | ValidationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthLogin>>, TError,{provider: 'google' | 'apple' | 'facebook';data: BodyType<OAuthLoginRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof oauthLogin>>,
+        TError,
+        {provider: 'google' | 'apple' | 'facebook';data: BodyType<OAuthLoginRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getOauthLoginMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

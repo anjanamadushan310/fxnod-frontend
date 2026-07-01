@@ -32,6 +32,11 @@ library, not a float.
  */
 
 export interface RegisterRequest {
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  full_name: string;
   email: string;
   /**
    * @minLength 8
@@ -39,18 +44,8 @@ export interface RegisterRequest {
    */
   password: string;
   /**
-   * @maxLength 100
-   * @nullable
+   * @minLength 8
+   * @maxLength 128
    */
-  first_name?: string | null;
-  /**
-   * @maxLength 100
-   * @nullable
-   */
-  last_name?: string | null;
-  /**
-   * @maxLength 32
-   * @nullable
-   */
-  phone?: string | null;
+  confirm_password: string;
 }

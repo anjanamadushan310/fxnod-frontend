@@ -30,20 +30,13 @@ library, not a float.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { KYCStatus } from './kYCStatus';
 
-export interface UserPublic {
-  id: string;
+export interface VerifyOTPRequest {
   email: string;
-  /** @nullable */
-  full_name?: string | null;
-  /** @nullable */
-  avatar_url?: string | null;
-  /** @nullable */
-  phone?: string | null;
-  is_email_verified: boolean;
-  is_active: boolean;
-  kyc_status: KYCStatus;
-  created_at: string;
-  updated_at: string;
+  /**
+   * @minLength 4
+   * @maxLength 10
+   * @pattern ^\d+$
+   */
+  code: string;
 }
